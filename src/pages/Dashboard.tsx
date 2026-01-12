@@ -29,7 +29,7 @@ type Tab = 'orders' | 'profile' | 'settings';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, profile, signOut, updateProfile, loading } = useAuth();
+  const { user, profile, signOut, updateProfile, isLoading: loading } = useAuth();
   const { data: orders, isLoading: ordersLoading } = useUserOrders();
   
   const [activeTab, setActiveTab] = useState<Tab>('orders');

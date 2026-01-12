@@ -17,7 +17,7 @@ const loginSchema = z.object({
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  const { user, signIn, resetPassword, loading } = useAuth();
+  const { user, signIn, resetPassword, isLoading: loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
