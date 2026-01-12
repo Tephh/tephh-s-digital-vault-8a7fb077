@@ -85,11 +85,16 @@ const Checkout: React.FC = () => {
       const discountAmount = getTotalPrice() - totalAmount;
 
       // Generate KHQR
+      const billNumber = `ORD-${Date.now()}`;
       const khqrResult = generateKHQR({
-        ...MERCHANT_CONFIG,
+        bakongAccount: MERCHANT_CONFIG.bakongAccount,
+        merchantName: MERCHANT_CONFIG.merchantName,
+        merchantCity: MERCHANT_CONFIG.merchantCity,
+        terminalLabel: MERCHANT_CONFIG.terminalLabel,
         currency: 'USD',
         amount: totalAmount,
-        billNumber: `ORD-${Date.now()}`,
+        billNumber,
+        storeLabel: "K'TEPHH Shop",
       });
 
       setQrData(khqrResult);
