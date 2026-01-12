@@ -100,32 +100,8 @@ const Checkout: React.FC = () => {
 
       setQrData(khqrResult);
 
-      // Create order in database with MD5 for Bakong webhook matching
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user?.id || null,
-          guest_name: formData.name,
-          guest_telegram: formData.telegram,
-          guest_email: formData.email,
-          guest_phone: formData.phone || null,
-          guest_notes: formData.notes,
-          account_email: formData.accountEmail || null,
-          account_password: formData.accountPassword || null,
-          total_amount: totalAmount,
-          discount_amount: discountAmount > 0 ? discountAmount : null,
-          coupon_code: couponCode,
-          payment_md5: khqrResult.md5, // Store MD5 for Bakong webhook verification
-          status: 'pending',
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Create order items
+      // Create order via backend function (avoids client-side RLS issues)
       const orderItems = cart.map(item => ({
-        order_id: order.id,
         product_id: item.id.includes('-') ? null : item.id,
         product_name: item.name,
         product_app: item.app,
@@ -135,11 +111,29 @@ const Checkout: React.FC = () => {
         unit_price: item.price,
       }));
 
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems);
+      const { data: createData, error: createError } = await supabase.functions.invoke('create-order', {
+        body: {
+          user_id: user?.id || null,
+          guest_name: formData.name || null,
+          guest_telegram: formData.telegram,
+          guest_email: formData.email || null,
+          guest_phone: formData.phone || null,
+          guest_notes: formData.notes || null,
+          account_email: formData.accountEmail || null,
+          account_password: formData.accountPassword || null,
+          total_amount: totalAmount,
+          discount_amount: discountAmount > 0 ? discountAmount : null,
+          coupon_code: couponCode,
+          payment_md5: khqrResult.md5,
+          status: 'pending',
+          items: orderItems,
+        }
+      });
 
-      if (itemsError) throw itemsError;
+      if (createError) throw createError;
+      if (!createData?.order?.id) throw new Error('Failed to create order');
+
+      const order = createData.order as { id: string };
 
       setOrderId(order.id);
 
