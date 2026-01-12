@@ -42,6 +42,7 @@ const Checkout: React.FC = () => {
     name: profile?.full_name || '',
     telegram: profile?.telegram_username || '',
     email: profile?.email || '',
+    phone: '',
     notes: '',
     accountEmail: '',
     accountPassword: '',
@@ -99,7 +100,7 @@ const Checkout: React.FC = () => {
 
       setQrData(khqrResult);
 
-      // Create order in database
+      // Create order in database with MD5 for Bakong webhook matching
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -107,12 +108,14 @@ const Checkout: React.FC = () => {
           guest_name: formData.name,
           guest_telegram: formData.telegram,
           guest_email: formData.email,
+          guest_phone: formData.phone || null,
           guest_notes: formData.notes,
           account_email: formData.accountEmail || null,
           account_password: formData.accountPassword || null,
           total_amount: totalAmount,
           discount_amount: discountAmount > 0 ? discountAmount : null,
           coupon_code: couponCode,
+          payment_md5: khqrResult.md5, // Store MD5 for Bakong webhook verification
           status: 'pending',
         })
         .select()
@@ -280,16 +283,29 @@ const Checkout: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email (Optional)</Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      placeholder="your@email.com"
-                    />
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email (Optional)</Label>
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        placeholder="your@email.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone Number (Optional)</Label>
+                      <Input
+                        id="phone"
+                        name="phone"
+                        type="tel"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        placeholder="855 12 345 678"
+                      />
+                    </div>
                   </div>
 
                   {needsAccountCredentials && (

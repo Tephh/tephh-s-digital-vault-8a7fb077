@@ -78,6 +78,7 @@ export type Database = {
           guest_email: string | null
           guest_name: string | null
           guest_notes: string | null
+          guest_phone: string | null
           guest_telegram: string
           id: string
           payment_md5: string | null
@@ -96,6 +97,7 @@ export type Database = {
           guest_email?: string | null
           guest_name?: string | null
           guest_notes?: string | null
+          guest_phone?: string | null
           guest_telegram: string
           id?: string
           payment_md5?: string | null
@@ -114,6 +116,7 @@ export type Database = {
           guest_email?: string | null
           guest_name?: string | null
           guest_notes?: string | null
+          guest_phone?: string | null
           guest_telegram?: string
           id?: string
           payment_md5?: string | null
