@@ -23,7 +23,7 @@ const registerSchema = z.object({
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
-  const { user, signUp, loading } = useAuth();
+  const { user, signUp, isLoading: loading } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     email: '',

@@ -81,7 +81,7 @@ interface Order {
 
 const Admin: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAdmin, signOut, loading } = useAuth();
+  const { user, isAdmin, signOut, isLoading: loading } = useAuth();
   
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [products, setProducts] = useState<Product[]>([]);
@@ -194,10 +194,24 @@ const Admin: React.FC = () => {
         if (error) throw error;
         toast.success('Product updated!');
       } else {
-        // Create new product
+        // Create new product - ensure required fields are present
+        const newProduct = {
+          name: productForm.name || '',
+          price: productForm.price || 0,
+          app: productForm.app || 'spotify',
+          category: productForm.category || 'account',
+          description: productForm.description,
+          long_description: productForm.long_description,
+          original_price: productForm.original_price,
+          duration: productForm.duration,
+          duration_months: productForm.duration_months,
+          stock: productForm.stock,
+          is_active: productForm.is_active,
+          image_url: productForm.image_url,
+        };
         const { error } = await supabase
           .from('products')
-          .insert(productForm);
+          .insert(newProduct);
         
         if (error) throw error;
         toast.success('Product created!');
