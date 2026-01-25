@@ -7,7 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, Tag } from 'lucide-react';
-import { getAppIcon } from '@/data/products';
+import { getAppIcon } from '@/lib/appIcons';
 import { toast } from 'sonner';
 
 const Cart: React.FC = () => {
@@ -55,8 +55,12 @@ const Cart: React.FC = () => {
                 {cart.map((item) => (
                   <div key={item.id} className="glass-card p-4 flex gap-4">
                     {/* Product Icon */}
-                    <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-4xl shrink-0">
-                      {getAppIcon(item.app)}
+                    <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center shrink-0 overflow-hidden">
+                      <img 
+                        src={getAppIcon(item.app)} 
+                        alt={item.app}
+                        className="w-12 h-12 object-contain"
+                      />
                     </div>
 
                     {/* Product Info */}
