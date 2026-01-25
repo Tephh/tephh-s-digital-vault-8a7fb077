@@ -37,6 +37,7 @@ const Checkout: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [qrData, setQrData] = useState<{ qrString: string; md5: string } | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     name: profile?.full_name || '',
@@ -80,23 +81,35 @@ const Checkout: React.FC = () => {
     }
 
     setIsLoading(true);
+    setOrderError(null);
 
     try {
       const totalAmount = getDiscountedPrice();
       const discountAmount = getTotalPrice() - totalAmount;
 
-      // Generate KHQR
+      // Validate amount before KHQR generation
+      if (totalAmount <= 0) {
+        throw new Error('Invalid order amount. Cart total must be greater than $0.');
+      }
+
+      // Generate KHQR with validated amount
       const billNumber = `ORD-${Date.now()}`;
-      const khqrResult = generateKHQR({
-        bakongAccount: MERCHANT_CONFIG.bakongAccount,
-        merchantName: MERCHANT_CONFIG.merchantName,
-        merchantCity: MERCHANT_CONFIG.merchantCity,
-        terminalLabel: MERCHANT_CONFIG.terminalLabel,
-        currency: 'USD',
-        amount: totalAmount,
-        billNumber,
-        storeLabel: "K'TEPHH Shop",
-      });
+      let khqrResult;
+      try {
+        khqrResult = generateKHQR({
+          bakongAccount: MERCHANT_CONFIG.bakongAccount,
+          merchantName: MERCHANT_CONFIG.merchantName,
+          merchantCity: MERCHANT_CONFIG.merchantCity,
+          terminalLabel: MERCHANT_CONFIG.terminalLabel,
+          currency: 'USD',
+          amount: totalAmount,
+          billNumber,
+          storeLabel: 'Tephh Shop',
+        });
+      } catch (khqrError: any) {
+        console.error('KHQR generation failed:', khqrError);
+        throw new Error(`Payment QR generation failed: ${khqrError.message}`);
+      }
 
       setQrData(khqrResult);
 
@@ -130,40 +143,47 @@ const Checkout: React.FC = () => {
         }
       });
 
-      if (createError) throw createError;
-      if (!createData?.order?.id) throw new Error('Failed to create order');
+      if (createError) {
+        console.error('Edge function error:', JSON.stringify(createError, null, 2));
+        throw new Error(createError.message || 'Failed to create order - network error');
+      }
+      
+      if (!createData?.order?.id) {
+        console.error('Invalid response from create-order:', createData);
+        throw new Error('Failed to create order - invalid server response');
+      }
 
       const order = createData.order as { id: string };
-
       setOrderId(order.id);
+      setOrderError(null);
 
-      // Send Telegram notification
-      try {
-        await supabase.functions.invoke('telegram-notify', {
-          body: {
-            orderId: order.id,
-            customerTelegram: formData.telegram,
-            customerName: formData.name,
-            totalAmount,
-            items: cart.map(item => ({
-              name: item.name,
-              quantity: item.quantity,
-              price: item.price,
-              app: item.app,
-            })),
-            status: 'new',
-          }
-        });
-      } catch (notifyError) {
-        console.error('Failed to send notification:', notifyError);
-      }
+      // Send Telegram notification (non-blocking)
+      supabase.functions.invoke('telegram-notify', {
+        body: {
+          orderId: order.id,
+          customerTelegram: formData.telegram,
+          customerName: formData.name,
+          totalAmount,
+          items: cart.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            app: item.app,
+          })),
+          status: 'new',
+        }
+      }).catch(notifyError => {
+        console.error('Failed to send Telegram notification:', notifyError);
+      });
 
       setStep('payment');
       toast.success('Order created! Please complete payment.');
 
     } catch (error: any) {
+      const errorMessage = error.message || 'Failed to create order. Please try again.';
       console.error('Error creating order:', error);
-      toast.error(error.message || 'Failed to create order');
+      setOrderError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -352,15 +372,34 @@ const Checkout: React.FC = () => {
                     />
                   </div>
 
+                  {/* Error Banner */}
+                  {orderError && (
+                    <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-destructive mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-semibold text-destructive">Order Creation Failed</p>
+                        <p className="text-sm text-destructive/80">{orderError}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Please try again or contact support via Telegram @tephh</p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Order Summary */}
                   <div className="border-t pt-6 space-y-4">
                     <h3 className="font-semibold">Order Summary</h3>
                     {cart.map(item => (
-                      <div key={item.id} className="flex items-center gap-3 text-sm">
-                        <span className="text-2xl">{getAppIcon(item.app)}</span>
-                        <div className="flex-1">
-                          <p className="font-medium">{item.name}</p>
-                          <p className="text-muted-foreground">{item.duration} x{item.quantity}</p>
+                      <div key={item.id} className="flex items-center gap-4 text-sm p-3 bg-muted/30 rounded-lg">
+                        <img 
+                          src={getAppIcon(item.app)} 
+                          alt={item.app}
+                          className="w-10 h-10 rounded-lg object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{item.name}</p>
+                          <p className="text-muted-foreground text-xs">{item.duration} × {item.quantity}</p>
                         </div>
                         <span className="font-semibold">${(item.price * item.quantity).toFixed(2)}</span>
                       </div>

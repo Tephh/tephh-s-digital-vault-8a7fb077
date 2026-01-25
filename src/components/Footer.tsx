@@ -147,7 +147,7 @@ const Footer: React.FC = () => {
               © {new Date().getFullYear()} Tephh Shop. {t('footer.rights')}.
             </p>
             <p className="text-muted-foreground/60 text-xs mt-2">
-              Made with ❤️ by K'TEPHH Kon Khmer Kamjea
+              Made with ❤️ by Tephh So Tuf
             </p>
           </div>
         </div>

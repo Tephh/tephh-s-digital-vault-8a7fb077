@@ -93,7 +93,7 @@ const Admin: React.FC = () => {
   
   // Settings state
   const [settings, setSettings] = useState({
-    merchantName: "K'TEPHH Kon Khmer Kamjea",
+    merchantName: 'Tephh So Tuf',
     bakongAccount: 'sin_soktep@bkrt',
     machineId: '005927335',
   });
