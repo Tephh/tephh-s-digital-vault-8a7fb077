@@ -18,7 +18,8 @@ import {
   QrCode,
   Send,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -38,6 +39,8 @@ const Checkout: React.FC = () => {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [qrData, setQrData] = useState<{ qrString: string; md5: string } | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'checking' | 'paid'>('pending');
   
   const [formData, setFormData] = useState({
     name: profile?.full_name || '',
@@ -198,6 +201,45 @@ const Checkout: React.FC = () => {
     }
   };
 
+  // Real-time payment status polling
+  useEffect(() => {
+    if (step !== 'payment' || !orderId || !qrData) return;
+
+    const checkPaymentStatus = async () => {
+      try {
+        setIsCheckingPayment(true);
+        const { data, error } = await supabase.functions.invoke('check-payment', {
+          body: { orderId, md5Hash: qrData.md5 }
+        });
+
+        if (error) {
+          console.error('Payment check error:', error);
+          return;
+        }
+
+        if (data?.status === 'paid' || data?.verified) {
+          setPaymentStatus('paid');
+          clearCart();
+          setStep('complete');
+          toast.success('🎉 Payment verified automatically! Thank you for your order.');
+          return;
+        }
+      } catch (err) {
+        console.error('Payment polling error:', err);
+      } finally {
+        setIsCheckingPayment(false);
+      }
+    };
+
+    // Initial check
+    checkPaymentStatus();
+
+    // Poll every 5 seconds
+    const interval = setInterval(checkPaymentStatus, 5000);
+
+    return () => clearInterval(interval);
+  }, [step, orderId, qrData, clearCart]);
+
   const handleConfirmPayment = async () => {
     if (!orderId || !qrData) return;
 
@@ -205,12 +247,18 @@ const Checkout: React.FC = () => {
 
     try {
       // Verify payment
-      await supabase.functions.invoke('verify-payment', {
+      const { data, error } = await supabase.functions.invoke('verify-payment', {
         body: {
           orderId,
           md5Hash: qrData.md5,
         }
       });
+
+      if (error) {
+        console.error('Payment verification error:', error);
+        toast.error('Payment verification failed. Please wait for auto-verification or contact support.');
+        return;
+      }
 
       clearCart();
       setStep('complete');
@@ -218,7 +266,7 @@ const Checkout: React.FC = () => {
 
     } catch (error: any) {
       console.error('Error confirming payment:', error);
-      toast.error('Failed to confirm payment');
+      toast.error('Failed to confirm payment. We will verify it automatically.');
     } finally {
       setIsLoading(false);
     }
@@ -457,6 +505,25 @@ const Checkout: React.FC = () => {
                   Scan the KHQR code with your banking app
                 </p>
 
+                {/* Real-time Payment Status Banner */}
+                <div className={`mb-6 p-4 rounded-lg flex items-center justify-center gap-3 ${
+                  isCheckingPayment 
+                    ? 'bg-blue-500/10 border border-blue-500/30' 
+                    : 'bg-yellow-500/10 border border-yellow-500/30'
+                }`}>
+                  {isCheckingPayment ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                      <span className="text-blue-500 font-medium">Checking payment status...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-5 h-5 text-yellow-500" />
+                      <span className="text-yellow-500 font-medium">Waiting for payment...</span>
+                    </>
+                  )}
+                </div>
+
                 {/* QR Code */}
                 <div className="bg-white p-6 rounded-xl inline-block mb-6">
                   <QRCodeSVG
@@ -482,6 +549,16 @@ const Checkout: React.FC = () => {
                   <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
                     <span className="text-muted-foreground">Order ID</span>
                     <span className="font-mono text-sm">{orderId?.slice(0, 8)}...</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                    <span className="text-muted-foreground">Status</span>
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      paymentStatus === 'paid' 
+                        ? 'bg-green-500/20 text-green-500' 
+                        : 'bg-yellow-500/20 text-yellow-500'
+                    }`}>
+                      {paymentStatus === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                    </span>
                   </div>
                   <div className="p-3 bg-muted/50 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
