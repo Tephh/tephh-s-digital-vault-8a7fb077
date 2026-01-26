@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      device_fingerprints: {
+        Row: {
+          created_at: string
+          fingerprint: string
+          guest_telegram: string | null
+          id: string
+          updated_at: string
+          used_coupons: string[] | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          fingerprint: string
+          guest_telegram?: string | null
+          id?: string
+          updated_at?: string
+          used_coupons?: string[] | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          fingerprint?: string
+          guest_telegram?: string | null
+          id?: string
+          updated_at?: string
+          used_coupons?: string[] | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           created_at: string

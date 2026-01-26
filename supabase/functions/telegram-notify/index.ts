@@ -1,11 +1,12 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface OrderNotification {
+interface NotifyRequest {
   orderId: string;
   customerTelegram: string;
   customerName?: string;
@@ -16,95 +17,137 @@ interface OrderNotification {
     price: number;
     app: string;
   }>;
-  status: 'new' | 'paid' | 'completed' | 'cancelled';
-  paymentMd5?: string;
+  status: 'new' | 'paid' | 'completed' | 'cancelled' | 'status_update';
+  action?: string;
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
-    const TELEGRAM_CHAT_ID = Deno.env.get('TELEGRAM_CHAT_ID');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-      console.error('Missing Telegram configuration');
+    const body: NotifyRequest = await req.json();
+    const { orderId, customerTelegram, customerName, totalAmount, items, status, action } = body;
+
+    console.log('Telegram notify request:', { orderId, status, action });
+
+    // First try environment secrets
+    let botToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
+    let chatId = Deno.env.get('TELEGRAM_CHAT_ID');
+
+    // If not in env, try database settings
+    if (!botToken || !chatId) {
+      const { data: settings } = await supabase
+        .from('settings')
+        .select('key, value')
+        .in('key', ['telegram_bot_token', 'telegram_chat_id']);
+
+      if (settings) {
+        const settingsMap: Record<string, string> = {};
+        settings.forEach(s => {
+          settingsMap[s.key] = s.value || '';
+        });
+        
+        if (!botToken) botToken = settingsMap.telegram_bot_token;
+        if (!chatId) chatId = settingsMap.telegram_chat_id;
+      }
+    }
+
+    if (!botToken || !chatId) {
+      console.log('Telegram bot not configured, skipping notification');
       return new Response(
-        JSON.stringify({ error: 'Telegram not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, message: 'Telegram not configured' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const body: OrderNotification = await req.json();
-    console.log('Received notification request:', body);
-
-    let message = '';
-    const emoji = {
-      new: '🆕',
-      paid: '💰',
-      completed: '✅',
-      cancelled: '❌'
-    };
-
-    if (body.status === 'new') {
-      message = `${emoji.new} *NEW ORDER*\n\n`;
-      message += `📋 Order ID: \`${body.orderId}\`\n`;
-      message += `👤 Customer: ${body.customerName || 'Guest'}\n`;
-      message += `📱 Telegram: @${body.customerTelegram.replace('@', '')}\n\n`;
-      message += `📦 *Items:*\n`;
-      body.items.forEach(item => {
-        message += `  • ${item.name} (${item.app}) x${item.quantity} - $${item.price.toFixed(2)}\n`;
-      });
-      message += `\n💵 *Total: $${body.totalAmount.toFixed(2)}*\n`;
-      message += `\n⏳ Awaiting payment...`;
-    } else if (body.status === 'paid') {
-      message = `${emoji.paid} *PAYMENT RECEIVED*\n\n`;
-      message += `📋 Order ID: \`${body.orderId}\`\n`;
-      message += `👤 Customer: @${body.customerTelegram.replace('@', '')}\n`;
-      message += `💵 Amount: $${body.totalAmount.toFixed(2)}\n`;
-      if (body.paymentMd5) {
-        message += `🔐 MD5: \`${body.paymentMd5}\`\n`;
-      }
-      message += `\n✅ Please deliver the order to the customer!`;
-    } else if (body.status === 'completed') {
-      message = `${emoji.completed} *ORDER COMPLETED*\n\n`;
-      message += `📋 Order ID: \`${body.orderId}\`\n`;
-      message += `👤 Customer: @${body.customerTelegram.replace('@', '')}\n`;
-    } else if (body.status === 'cancelled') {
-      message = `${emoji.cancelled} *ORDER CANCELLED*\n\n`;
-      message += `📋 Order ID: \`${body.orderId}\`\n`;
-      message += `👤 Customer: @${body.customerTelegram.replace('@', '')}\n`;
+    // Build message based on status
+    let emoji = '📦';
+    let title = 'New Order';
+    
+    switch (status) {
+      case 'new':
+        emoji = '🛒';
+        title = 'NEW ORDER';
+        break;
+      case 'paid':
+        emoji = '💰';
+        title = 'PAYMENT CONFIRMED';
+        break;
+      case 'completed':
+        emoji = '✅';
+        title = 'ORDER COMPLETED';
+        break;
+      case 'cancelled':
+        emoji = '❌';
+        title = 'ORDER CANCELLED';
+        break;
+      case 'status_update':
+        emoji = '🔄';
+        title = 'ORDER UPDATED';
+        break;
     }
+
+    const itemsList = items.map(item => 
+      `  • ${item.name} x${item.quantity} - $${(item.price * item.quantity).toFixed(2)}`
+    ).join('\n');
+
+    const telegramHandle = customerTelegram?.startsWith('@') 
+      ? customerTelegram 
+      : `@${customerTelegram}`;
+
+    const message = `${emoji} *${title}*
+
+📋 Order: \`${orderId.slice(0, 8)}\`
+👤 Customer: ${customerName || 'Guest'}
+📱 Telegram: ${telegramHandle}
+💵 Total: *$${totalAmount.toFixed(2)}*
+
+🛍️ Items:
+${itemsList}
+
+${status === 'new' ? '⏳ Awaiting payment verification...' : ''}
+${status === 'paid' ? '🎉 Payment verified! Ready to fulfill.' : ''}`;
 
     // Send to Telegram
-    const telegramUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-    const telegramResponse = await fetch(telegramUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text: message,
-        parse_mode: 'Markdown'
-      })
-    });
+    const telegramResponse = await fetch(
+      `https://api.telegram.org/bot${botToken}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: message,
+          parse_mode: 'Markdown',
+          disable_web_page_preview: true,
+        }),
+      }
+    );
 
     const telegramResult = await telegramResponse.json();
-    console.log('Telegram response:', telegramResult);
-
-    if (!telegramResponse.ok) {
-      throw new Error(`Telegram API error: ${JSON.stringify(telegramResult)}`);
+    
+    if (!telegramResult.ok) {
+      console.error('Telegram API error:', telegramResult);
+      return new Response(
+        JSON.stringify({ success: false, error: telegramResult.description }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
+    console.log('Telegram notification sent successfully');
+    
     return new Response(
-      JSON.stringify({ success: true, telegramResult }),
+      JSON.stringify({ success: true }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: unknown) {
-    console.error('Error sending notification:', error);
+    console.error('Telegram notify error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ error: message }),
