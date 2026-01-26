@@ -19,7 +19,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { 
   LayoutDashboard, 
@@ -32,12 +31,15 @@ import {
   Trash2,
   Loader2,
   Save,
-  Eye,
   CheckCircle,
   Clock,
-  AlertCircle,
   XCircle,
-  RefreshCw
+  RefreshCw,
+  Send,
+  ExternalLink,
+  Ban,
+  Image,
+  Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -90,12 +92,16 @@ const Admin: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState<string | null>(null);
   
   // Settings state
   const [settings, setSettings] = useState({
     merchantName: 'Tephh So Tuf',
     bakongAccount: 'sin_soktep@bkrt',
     machineId: '005927335',
+    telegramBotToken: '',
+    telegramChatId: '',
+    shopLogoUrl: '',
   });
 
   // Product form state
@@ -167,6 +173,9 @@ const Admin: React.FC = () => {
           merchantName: settingsMap.merchant_name || settings.merchantName,
           bakongAccount: settingsMap.bakong_account || settings.bakongAccount,
           machineId: settingsMap.machine_id || settings.machineId,
+          telegramBotToken: settingsMap.telegram_bot_token || '',
+          telegramChatId: settingsMap.telegram_chat_id || '',
+          shopLogoUrl: settingsMap.shop_logo_url || '',
         });
       }
     } catch (error) {
@@ -185,7 +194,6 @@ const Admin: React.FC = () => {
     setIsSaving(true);
     try {
       if (editingProduct) {
-        // Update existing product
         const { error } = await supabase
           .from('products')
           .update(productForm)
@@ -194,7 +202,6 @@ const Admin: React.FC = () => {
         if (error) throw error;
         toast.success('Product updated!');
       } else {
-        // Create new product - ensure required fields are present
         const newProduct = {
           name: productForm.name || '',
           price: productForm.price || 0,
@@ -247,16 +254,65 @@ const Admin: React.FC = () => {
 
   const handleUpdateOrderStatus = async (orderId: string, status: string) => {
     try {
+      const updateData: { status: string; payment_verified_at?: string } = { status };
+      
+      if (status === 'paid' || status === 'completed') {
+        updateData.payment_verified_at = new Date().toISOString();
+      }
+      
       const { error } = await supabase
         .from('orders')
-        .update({ status })
+        .update(updateData)
         .eq('id', orderId);
       
       if (error) throw error;
-      toast.success('Order status updated!');
+      
+      // Send Telegram notification for status update
+      const order = orders.find(o => o.id === orderId);
+      if (order && settings.telegramBotToken && settings.telegramChatId) {
+        await supabase.functions.invoke('telegram-notify', {
+          body: {
+            orderId,
+            customerTelegram: order.guest_telegram,
+            customerName: order.guest_name,
+            totalAmount: order.total_amount,
+            items: order.order_items,
+            status: status,
+            action: 'status_update'
+          }
+        }).catch(console.error);
+      }
+      
+      toast.success(`Order ${status === 'paid' ? 'confirmed' : status === 'cancelled' ? 'rejected' : 'updated'}!`);
       fetchData();
     } catch (error: any) {
       toast.error(error.message);
+    }
+  };
+
+  const handleVerifyPaymentManually = async (orderId: string, md5Hash: string) => {
+    setIsVerifyingPayment(orderId);
+    try {
+      const { data, error } = await supabase.functions.invoke('check-payment', {
+        body: { orderId, md5Hash }
+      });
+
+      if (error) {
+        console.error('Verify payment error:', error);
+        toast.error('Failed to verify payment with Bakong API');
+        return;
+      }
+
+      if (data?.status === 'paid' || data?.verified) {
+        toast.success('Payment verified successfully via Bakong!');
+        fetchData();
+      } else {
+        toast.info('Payment not found in Bakong yet. You can manually confirm if customer shows proof.');
+      }
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsVerifyingPayment(null);
     }
   };
 
@@ -267,6 +323,9 @@ const Admin: React.FC = () => {
         { key: 'merchant_name', value: settings.merchantName },
         { key: 'bakong_account', value: settings.bakongAccount },
         { key: 'machine_id', value: settings.machineId },
+        { key: 'telegram_bot_token', value: settings.telegramBotToken },
+        { key: 'telegram_chat_id', value: settings.telegramChatId },
+        { key: 'shop_logo_url', value: settings.shopLogoUrl },
       ];
 
       for (const setting of settingsToSave) {
@@ -280,6 +339,37 @@ const Admin: React.FC = () => {
       toast.success('Settings saved!');
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTestTelegram = async () => {
+    if (!settings.telegramBotToken || !settings.telegramChatId) {
+      toast.error('Please enter both Bot Token and Chat ID first');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: settings.telegramChatId,
+          text: '✅ K\'TEPHH Shop Telegram Bot is connected!\n\nYou will receive order notifications here.',
+          parse_mode: 'Markdown'
+        })
+      });
+
+      const data = await response.json();
+      if (data.ok) {
+        toast.success('Test message sent successfully!');
+      } else {
+        toast.error(`Telegram error: ${data.description}`);
+      }
+    } catch (error: any) {
+      toast.error('Failed to send test message');
     } finally {
       setIsSaving(false);
     }
@@ -317,13 +407,13 @@ const Admin: React.FC = () => {
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case 'pending':
-        return <Badge variant="outline" className="text-yellow-500"><Clock className="w-3 h-3 mr-1" /> Pending</Badge>;
+        return <Badge variant="outline" className="text-yellow-500 border-yellow-500/50"><Clock className="w-3 h-3 mr-1" /> Pending</Badge>;
       case 'paid':
-        return <Badge variant="outline" className="text-blue-500"><CheckCircle className="w-3 h-3 mr-1" /> Paid</Badge>;
+        return <Badge variant="outline" className="text-blue-500 border-blue-500/50"><CheckCircle className="w-3 h-3 mr-1" /> Paid</Badge>;
       case 'completed':
-        return <Badge variant="outline" className="text-green-500"><CheckCircle className="w-3 h-3 mr-1" /> Completed</Badge>;
+        return <Badge variant="outline" className="text-green-500 border-green-500/50"><CheckCircle className="w-3 h-3 mr-1" /> Completed</Badge>;
       case 'cancelled':
-        return <Badge variant="outline" className="text-red-500"><XCircle className="w-3 h-3 mr-1" /> Cancelled</Badge>;
+        return <Badge variant="outline" className="text-red-500 border-red-500/50"><XCircle className="w-3 h-3 mr-1" /> Cancelled</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -441,9 +531,21 @@ const Admin: React.FC = () => {
               <div className="space-y-4">
                 {orders.slice(0, 5).map(order => (
                   <div key={order.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                    <div>
-                      <p className="font-mono text-sm">#{order.id.slice(0, 8)}</p>
-                      <p className="text-sm text-muted-foreground">@{order.guest_telegram}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex -space-x-2">
+                        {order.order_items?.slice(0, 2).map((item, idx) => (
+                          <img 
+                            key={idx}
+                            src={getAppIcon(item.product_app)} 
+                            alt={item.product_app}
+                            className="w-8 h-8 rounded-lg border-2 border-background object-contain bg-muted"
+                          />
+                        ))}
+                      </div>
+                      <div>
+                        <p className="font-mono text-sm">#{order.id.slice(0, 8)}</p>
+                        <p className="text-sm text-muted-foreground">@{order.guest_telegram}</p>
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className="font-bold">${order.total_amount.toFixed(2)}</p>
@@ -470,7 +572,11 @@ const Admin: React.FC = () => {
             <div className="grid gap-4">
               {products.map(product => (
                 <div key={product.id} className="glass-card p-4 flex items-center gap-4">
-                  <div className="text-3xl">{getAppIcon(product.app)}</div>
+                  <img 
+                    src={getAppIcon(product.app)} 
+                    alt={product.app}
+                    className="w-12 h-12 rounded-lg object-contain bg-muted/50 p-1"
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold truncate">{product.name}</h3>
@@ -655,7 +761,15 @@ const Admin: React.FC = () => {
                     <div className="p-3 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">Customer</p>
                       <p className="font-medium">{order.guest_name || 'Guest'}</p>
-                      <p className="text-sm">@{order.guest_telegram}</p>
+                      <a 
+                        href={`https://t.me/${order.guest_telegram.replace('@', '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+                      >
+                        @{order.guest_telegram.replace('@', '')}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
                       {order.guest_email && <p className="text-sm">{order.guest_email}</p>}
                     </div>
                     <div className="p-3 bg-muted/50 rounded-lg">
@@ -679,7 +793,11 @@ const Admin: React.FC = () => {
                     <p className="text-sm font-medium">Items:</p>
                     {order.order_items?.map((item, idx) => (
                       <div key={idx} className="flex items-center gap-3 text-sm p-2 bg-muted/30 rounded">
-                        <span className="text-xl">{getAppIcon(item.product_app)}</span>
+                        <img 
+                          src={getAppIcon(item.product_app)} 
+                          alt={item.product_app}
+                          className="w-8 h-8 rounded-lg object-contain bg-muted/50"
+                        />
                         <span className="flex-1">{item.product_name}</span>
                         <span>x{item.quantity}</span>
                         <span className="font-medium">${item.unit_price.toFixed(2)}</span>
@@ -687,13 +805,58 @@ const Admin: React.FC = () => {
                     ))}
                   </div>
 
-                  <div className="flex items-center gap-2 pt-4 border-t">
-                    <span className="text-sm text-muted-foreground">Update status:</span>
+                  <div className="flex flex-wrap items-center gap-2 pt-4 border-t">
+                    {order.status === 'pending' && (
+                      <>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="text-blue-500 border-blue-500/50 hover:bg-blue-500/10"
+                          onClick={() => order.payment_md5 && handleVerifyPaymentManually(order.id, order.payment_md5)}
+                          disabled={isVerifyingPayment === order.id || !order.payment_md5}
+                        >
+                          {isVerifyingPayment === order.id ? (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-4 h-4 mr-1" />
+                          )}
+                          Check Bank
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => handleUpdateOrderStatus(order.id, 'paid')}
+                        >
+                          <CheckCircle className="w-4 h-4 mr-1" />
+                          Confirm Paid
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="destructive"
+                          onClick={() => handleUpdateOrderStatus(order.id, 'cancelled')}
+                        >
+                          <Ban className="w-4 h-4 mr-1" />
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                    
+                    {order.status === 'paid' && (
+                      <Button 
+                        size="sm" 
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={() => handleUpdateOrderStatus(order.id, 'completed')}
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        Mark Complete
+                      </Button>
+                    )}
+
                     <Select
                       value={order.status || 'pending'}
                       onValueChange={(value) => handleUpdateOrderStatus(order.id, value)}
                     >
-                      <SelectTrigger className="w-40">
+                      <SelectTrigger className="w-32 ml-auto">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -715,6 +878,44 @@ const Admin: React.FC = () => {
           <div className="space-y-6 max-w-2xl">
             <h2 className="text-2xl font-bold">Settings</h2>
 
+            {/* Shop Branding */}
+            <div className="glass-card p-6 space-y-6">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Image className="w-5 h-5" />
+                Shop Branding
+              </h3>
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Shop Logo URL</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={settings.shopLogoUrl}
+                      onChange={(e) => setSettings(prev => ({ ...prev, shopLogoUrl: e.target.value }))}
+                      placeholder="https://example.com/logo.png"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Enter a URL to your shop logo. Recommended size: 200x200px
+                  </p>
+                  {settings.shopLogoUrl && (
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm mb-2">Preview:</p>
+                      <img 
+                        src={settings.shopLogoUrl} 
+                        alt="Shop Logo Preview"
+                        className="w-20 h-20 object-contain rounded-lg bg-background"
+                        onError={(e) => {
+                          e.currentTarget.src = '/placeholder.svg';
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* KHQR Payment Settings */}
             <div className="glass-card p-6 space-y-6">
               <h3 className="text-lg font-semibold">KHQR Payment Settings</h3>
               
@@ -744,20 +945,58 @@ const Admin: React.FC = () => {
                   />
                 </div>
               </div>
-
-              <Button className="btn-gold" onClick={handleSaveSettings} disabled={isSaving}>
-                {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                Save Settings
-              </Button>
             </div>
 
-            <div className="glass-card p-6 space-y-4">
-              <h3 className="text-lg font-semibold">Telegram Notifications</h3>
-              <p className="text-sm text-muted-foreground">
-                Telegram notifications are configured via environment secrets. 
-                Contact the developer to update the bot token or chat ID.
-              </p>
+            {/* Telegram Bot Settings */}
+            <div className="glass-card p-6 space-y-6">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Send className="w-5 h-5" />
+                Telegram Notifications
+              </h3>
+              
+              <div className="space-y-4">
+                <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                  <p className="text-sm">
+                    <strong>How to set up:</strong>
+                  </p>
+                  <ol className="text-sm text-muted-foreground list-decimal ml-4 mt-2 space-y-1">
+                    <li>Message @BotFather on Telegram and create a new bot</li>
+                    <li>Copy the bot token and paste it below</li>
+                    <li>Add your bot to a group or message it directly</li>
+                    <li>Get your Chat ID by messaging @userinfobot</li>
+                  </ol>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Bot Token</Label>
+                  <Input
+                    type="password"
+                    value={settings.telegramBotToken}
+                    onChange={(e) => setSettings(prev => ({ ...prev, telegramBotToken: e.target.value }))}
+                    placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Chat ID</Label>
+                  <Input
+                    value={settings.telegramChatId}
+                    onChange={(e) => setSettings(prev => ({ ...prev, telegramChatId: e.target.value }))}
+                    placeholder="-1001234567890 or your user ID"
+                  />
+                </div>
+
+                <Button variant="outline" onClick={handleTestTelegram} disabled={isSaving}>
+                  <Send className="w-4 h-4 mr-2" />
+                  Send Test Message
+                </Button>
+              </div>
             </div>
+
+            <Button className="btn-gold w-full" onClick={handleSaveSettings} disabled={isSaving}>
+              {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+              Save All Settings
+            </Button>
           </div>
         )}
       </main>
