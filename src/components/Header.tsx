@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom';
 import { ShoppingCart, Menu, X, Moon, Sun, Heart, Globe } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/contexts/CartContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 
 const Header: React.FC = () => {
   const { theme, setTheme, language, setLanguage, t } = useTheme();
   const { getTotalItems } = useCart();
+  const { user, isAdmin } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [countdown, setCountdown] = useState({ hours: 3, minutes: 0, seconds: 0 });
 
@@ -98,6 +100,11 @@ const Header: React.FC = () => {
               <Link to="/contact" className="font-medium hover:text-primary transition-colors">
                 {t('nav.contact')}
               </Link>
+                {user && isAdmin && (
+                  <Link to="/admin" className="font-medium hover:text-primary transition-colors">
+                    Admin
+                  </Link>
+                )}
             </div>
 
             {/* Right Side Actions */}
@@ -133,11 +140,13 @@ const Header: React.FC = () => {
               </Link>
 
               {/* Login Button */}
-              <Link to="/login" className="hidden md:block">
-                <Button variant="outline" size="sm">
-                  {t('nav.login')}
-                </Button>
-              </Link>
+              {!user && (
+                <Link to="/login" className="hidden md:block">
+                  <Button variant="outline" size="sm">
+                    {t('nav.login')}
+                  </Button>
+                </Link>
+              )}
 
               {/* Mobile Menu Toggle */}
               <Button
@@ -171,9 +180,16 @@ const Header: React.FC = () => {
               <Link to="/contact" className="py-2 font-medium" onClick={() => setIsMenuOpen(false)}>
                 {t('nav.contact')}
               </Link>
-              <Link to="/login" className="py-2" onClick={() => setIsMenuOpen(false)}>
-                <Button className="w-full">{t('nav.login')}</Button>
-              </Link>
+              {user && isAdmin && (
+                <Link to="/admin" className="py-2 font-medium" onClick={() => setIsMenuOpen(false)}>
+                  Admin
+                </Link>
+              )}
+              {!user && (
+                <Link to="/login" className="py-2" onClick={() => setIsMenuOpen(false)}>
+                  <Button className="w-full">{t('nav.login')}</Button>
+                </Link>
+              )}
             </div>
           </div>
         )}
