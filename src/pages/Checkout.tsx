@@ -579,18 +579,19 @@ const Checkout: React.FC = () => {
                   {isLoading ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Confirming...
+                      Submitting...
                     </>
                   ) : (
                     <>
                       <Send className="w-5 h-5 mr-2" />
-                      I've Paid - Confirm Order
+                      I've Paid - Submit for Verification
                     </>
                   )}
                 </Button>
 
-                <p className="text-xs text-muted-foreground mt-4">
-                  After payment, click the button above. We'll verify and deliver via Telegram.
+                <p className="text-sm text-muted-foreground mt-4 p-3 bg-muted/30 rounded-lg">
+                  💡 After clicking, an admin will verify your payment and confirm your order. 
+                  Please wait for confirmation via Telegram.
                 </p>
               </div>
             </div>
@@ -603,14 +604,32 @@ const Checkout: React.FC = () => {
                 <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
                   <CheckCircle className="w-10 h-10 text-green-500" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Order Complete!</h2>
-                <p className="text-muted-foreground mb-6">
-                  Thank you for your purchase. We'll deliver your products via Telegram shortly.
+                <h2 className="text-2xl font-bold mb-2">Order Submitted!</h2>
+                <p className="text-muted-foreground mb-4">
+                  Thank you for your purchase! Your order has been submitted for verification.
                 </p>
+                
+                {/* Delivery Time Notice */}
+                <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg mb-6">
+                  <div className="flex items-center justify-center gap-2 text-primary mb-2">
+                    <Clock className="w-5 h-5" />
+                    <span className="font-semibold">Estimated Delivery: 1-3 Hours</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    An admin will verify your payment and deliver your products via Telegram. 
+                    Please ensure your Telegram username is correct.
+                  </p>
+                </div>
                 
                 <div className="p-4 bg-muted/50 rounded-lg text-left mb-6">
                   <p className="text-sm text-muted-foreground mb-1">Order ID</p>
                   <p className="font-mono">{orderId}</p>
+                </div>
+
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-left mb-6">
+                  <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                    ⚠️ If you don't receive confirmation within 3 hours, please contact us via Telegram @tephh
+                  </p>
                 </div>
 
                 <div className="flex gap-4">
