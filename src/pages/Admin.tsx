@@ -121,8 +121,14 @@ const Admin: React.FC = () => {
   });
 
   useEffect(() => {
-    if (!loading && (!user || !isAdmin)) {
-      navigate('/login');
+    // Only redirect after auth state is fully loaded
+    if (!loading) {
+      if (!user) {
+        navigate('/login');
+      } else if (isAdmin === false) {
+        toast.error('Access denied. Admin privileges required.');
+        navigate('/');
+      }
     }
   }, [user, isAdmin, loading, navigate]);
 
@@ -425,10 +431,38 @@ const Admin: React.FC = () => {
   const totalRevenue = orders.filter(o => o.status === 'completed' || o.status === 'paid').reduce((sum, o) => sum + o.total_amount, 0);
   const activeProducts = products.filter(p => p.is_active).length;
 
-  if (loading || isLoadingData) {
+  // Show loading while auth is being determined
+  if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Checking admin access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show access denied if not admin (after loading completes)
+  if (!user || !isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading while fetching data
+  if (isLoadingData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading admin dashboard...</p>
+        </div>
       </div>
     );
   }
