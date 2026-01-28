@@ -114,6 +114,20 @@ ${itemsList}
 ${status === 'new' ? '⏳ Awaiting payment verification...' : ''}
 ${status === 'paid' ? '🎉 Payment verified! Ready to fulfill.' : ''}`;
 
+    // Create inline keyboard for pending orders
+    const inlineKeyboard = status === 'new' ? {
+      inline_keyboard: [
+        [
+          { text: '✅ Confirm Paid', callback_data: `confirm_${orderId}` },
+          { text: '❌ Reject', callback_data: `reject_${orderId}` }
+        ],
+        [
+          { text: '🔍 Check Bank', callback_data: `check_${orderId}` },
+          { text: '📋 View Details', url: `https://tephhshop.lovable.app/#/admin` }
+        ]
+      ]
+    } : undefined;
+
     // Send to Telegram
     const telegramResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/sendMessage`,
@@ -125,6 +139,7 @@ ${status === 'paid' ? '🎉 Payment verified! Ready to fulfill.' : ''}`;
           text: message,
           parse_mode: 'Markdown',
           disable_web_page_preview: true,
+          reply_markup: inlineKeyboard,
         }),
       }
     );

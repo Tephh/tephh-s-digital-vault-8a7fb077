@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/contexts/CartContext';
-import { ShoppingCart, ArrowLeft, Package, Clock, Shield, Sparkles } from 'lucide-react';
+import { useWishlist } from '@/hooks/useWishlist';
+import { ShoppingCart, ArrowLeft, Package, Clock, Shield, Sparkles, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getAppIcon, getAppColor, getAppEmoji } from '@/lib/appIcons';
+import { getAppIcon, getAppColor } from '@/lib/appIcons';
 import { DatabaseProduct } from '@/hooks/useProducts';
 
 interface ProductCardProps {
@@ -14,10 +15,12 @@ interface ProductCardProps {
 const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
   const { t } = useTheme();
   const { addToCart } = useCart();
+  const { isInWishlist, toggleWishlist } = useWishlist();
   const [isFlipped, setIsFlipped] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   const delay = index * 100;
+  const inWishlist = isInWishlist(product.id);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -33,6 +36,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
       duration: product.duration || undefined,
       durationMonths: product.duration_months || undefined,
     });
+  };
+
+  const handleWishlist = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleWishlist(product.id);
   };
 
   const handleFlip = () => {
@@ -82,13 +90,28 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
                   onError={() => setImageError(true)}
                 />
               ) : (
-                <img 
-                  src={getAppIcon(product.app)} 
-                  alt={product.name}
-                  className="w-20 h-20 object-contain drop-shadow-2xl transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3"
-                />
+                <div className="w-24 h-24 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
+                  <img 
+                    src={getAppIcon(product.app)} 
+                    alt={product.name}
+                    className="w-16 h-16 object-contain drop-shadow-2xl transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3"
+                  />
+                </div>
               )}
             </div>
+
+            {/* Wishlist Button */}
+            <button
+              onClick={handleWishlist}
+              className={`absolute top-3 right-3 z-20 w-9 h-9 rounded-full flex items-center justify-center
+                transition-all duration-300 ${
+                inWishlist 
+                  ? 'bg-pink-500 text-white' 
+                  : 'bg-black/30 backdrop-blur-md text-white hover:bg-pink-500'
+              }`}
+            >
+              <Heart className={`w-4 h-4 ${inWishlist ? 'fill-current' : ''}`} />
+            </button>
 
             {/* App Icon Overlay (when showing product image) */}
             {hasProductImage && (
@@ -106,7 +129,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
 
             {/* Duration Badge */}
             {product.duration && (
-              <div className="absolute top-3 right-3 z-20">
+              <div className={`absolute ${hasProductImage ? 'bottom-3 right-3' : 'top-3 right-14'} z-20`}>
                 <div className="bg-black/30 backdrop-blur-md text-white text-xs font-semibold 
                   px-3 py-1.5 rounded-full border border-white/20 shadow-lg">
                   {product.duration}
@@ -130,10 +153,12 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
 
             {/* Click to Flip Indicator */}
             <div className="absolute bottom-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <div className="flex items-center gap-1 bg-white/20 backdrop-blur-md px-2 py-1 rounded-full text-white text-xs">
-                <Sparkles className="w-3 h-3" />
-                <span>Details</span>
-              </div>
+              {!hasProductImage && (
+                <div className="flex items-center gap-1 bg-white/20 backdrop-blur-md px-2 py-1 rounded-full text-white text-xs">
+                  <Sparkles className="w-3 h-3" />
+                  <span>Details</span>
+                </div>
+              )}
             </div>
           </div>
 

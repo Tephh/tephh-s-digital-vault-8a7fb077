@@ -102,6 +102,7 @@ export type Database = {
         Row: {
           account_email: string | null
           account_password: string | null
+          admin_notes: string | null
           coupon_code: string | null
           created_at: string
           discount_amount: number | null
@@ -121,6 +122,7 @@ export type Database = {
         Insert: {
           account_email?: string | null
           account_password?: string | null
+          admin_notes?: string | null
           coupon_code?: string | null
           created_at?: string
           discount_amount?: number | null
@@ -140,6 +142,7 @@ export type Database = {
         Update: {
           account_email?: string | null
           account_password?: string | null
+          admin_notes?: string | null
           coupon_code?: string | null
           created_at?: string
           discount_amount?: number | null
@@ -214,11 +217,14 @@ export type Database = {
       }
       profiles: {
         Row: {
+          address: string | null
+          avatar_url: string | null
           created_at: string
           email: string | null
           email_verified: boolean | null
           full_name: string | null
           id: string
+          phone: string | null
           telegram_username: string | null
           updated_at: string
           user_id: string
@@ -226,11 +232,14 @@ export type Database = {
           verification_token: string | null
         }
         Insert: {
+          address?: string | null
+          avatar_url?: string | null
           created_at?: string
           email?: string | null
           email_verified?: boolean | null
           full_name?: string | null
           id?: string
+          phone?: string | null
           telegram_username?: string | null
           updated_at?: string
           user_id: string
@@ -238,11 +247,14 @@ export type Database = {
           verification_token?: string | null
         }
         Update: {
+          address?: string | null
+          avatar_url?: string | null
           created_at?: string
           email?: string | null
           email_verified?: boolean | null
           full_name?: string | null
           id?: string
+          phone?: string | null
           telegram_username?: string | null
           updated_at?: string
           user_id?: string
@@ -292,6 +304,35 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      wishlist: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wishlist_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
