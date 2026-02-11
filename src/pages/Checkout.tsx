@@ -201,7 +201,42 @@ const Checkout: React.FC = () => {
     }
   };
 
-  // Real-time payment status polling
+  // Real-time order status via Supabase Realtime (listens for Telegram confirm/reject)
+  useEffect(() => {
+    if (!orderId || step === 'complete') return;
+
+    const channel = supabase
+      .channel(`order-${orderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `id=eq.${orderId}`,
+        },
+        (payload) => {
+          const newStatus = payload.new.status;
+          console.log('Order status updated:', newStatus);
+          
+          if (newStatus === 'paid' || newStatus === 'completed') {
+            setPaymentStatus('paid');
+            clearCart();
+            setStep('complete');
+            toast.success('🎉 Payment confirmed by admin! Thank you for your order.');
+          } else if (newStatus === 'cancelled') {
+            toast.error('❌ Order was rejected by admin. Please contact @tephh on Telegram.');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orderId, step, clearCart]);
+
+  // Bakong API payment polling
   useEffect(() => {
     if (step !== 'payment' || !orderId || !qrData) return;
 
@@ -231,11 +266,8 @@ const Checkout: React.FC = () => {
       }
     };
 
-    // Initial check
     checkPaymentStatus();
-
-    // Poll every 5 seconds
-    const interval = setInterval(checkPaymentStatus, 5000);
+    const interval = setInterval(checkPaymentStatus, 10000);
 
     return () => clearInterval(interval);
   }, [step, orderId, qrData, clearCart]);
@@ -560,38 +592,11 @@ const Checkout: React.FC = () => {
                       {paymentStatus === 'paid' ? '✓ Paid' : '⏳ Pending'}
                     </span>
                   </div>
-                  <div className="p-3 bg-muted/50 rounded-lg">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-muted-foreground">MD5 Hash</span>
-                      <Button variant="ghost" size="sm" onClick={handleCopyMD5}>
-                        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      </Button>
-                    </div>
-                    <code className="text-xs break-all block">{qrData.md5}</code>
-                  </div>
                 </div>
 
-                <Button 
-                  className="w-full btn-gold text-lg py-6"
-                  onClick={handleConfirmPayment}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Submitting...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-5 h-5 mr-2" />
-                      I've Paid - Submit for Verification
-                    </>
-                  )}
-                </Button>
-
                 <p className="text-sm text-muted-foreground mt-4 p-3 bg-muted/30 rounded-lg">
-                  💡 After clicking, an admin will verify your payment and confirm your order. 
-                  Please wait for confirmation via Telegram.
+                  💡 After scanning and paying, an admin will verify your payment automatically.
+                  Please wait for confirmation — this page will update in real-time.
                 </p>
               </div>
             </div>
