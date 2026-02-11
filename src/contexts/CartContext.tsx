@@ -53,6 +53,10 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
+        // If coupon is applied, limit to 1 qty per item
+        if (couponCode) {
+          return prev;
+        }
         return prev.map(item =>
           item.id === product.id
             ? { ...item, quantity: item.quantity + 1 }
@@ -70,6 +74,10 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateQuantity = (productId: string, quantity: number) => {
     if (quantity <= 0) {
       removeFromCart(productId);
+      return;
+    }
+    // If coupon is applied, limit to 1 qty per item
+    if (couponCode && quantity > 1) {
       return;
     }
     setCart(prev =>
@@ -99,6 +107,8 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const discount = Math.floor(Math.random() * 6) + 5;
       setCouponCode(code.toUpperCase());
       setCouponDiscount(discount);
+      // Force all items to qty 1 when coupon is applied
+      setCart(prev => prev.map(item => ({ ...item, quantity: 1 })));
       return true;
     }
     return false;

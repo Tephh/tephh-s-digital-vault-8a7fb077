@@ -30,7 +30,7 @@ serve(async (req) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: webhookUrl,
-          allowed_updates: ['callback_query'],
+          allowed_updates: ['callback_query', 'message'],
         }),
       }
     );
