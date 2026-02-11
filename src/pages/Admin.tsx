@@ -44,6 +44,7 @@ import {
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { getAppIcon } from '@/lib/appIcons';
+import ImageUpload from '@/components/ImageUpload';
 
 type Tab = 'dashboard' | 'products' | 'orders' | 'settings';
 
@@ -252,6 +253,32 @@ const Admin: React.FC = () => {
       
       if (error) throw error;
       toast.success('Product deleted!');
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!confirm('Are you sure you want to delete this order? This cannot be undone.')) return;
+    
+    try {
+      // Delete order items first
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .delete()
+        .eq('order_id', orderId);
+      
+      if (itemsError) throw itemsError;
+
+      // Then delete the order
+      const { error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId);
+      
+      if (error) throw error;
+      toast.success('Order deleted!');
       fetchData();
     } catch (error: any) {
       toast.error(error.message);
@@ -726,6 +753,17 @@ const Admin: React.FC = () => {
                   </div>
 
                   <div className="space-y-2">
+                    <Label>Product Image</Label>
+                    <ImageUpload
+                      value={productForm.image_url || ''}
+                      onChange={(url) => setProductForm(prev => ({ ...prev, image_url: url }))}
+                      folder="products"
+                      aspectRatio="square"
+                      placeholder="Upload product logo (1:1)"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
                     <Label>Short Description</Label>
                     <Textarea
                       value={productForm.description || ''}
@@ -900,6 +938,16 @@ const Admin: React.FC = () => {
                         <SelectItem value="cancelled">Cancelled</SelectItem>
                       </SelectContent>
                     </Select>
+
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                      onClick={() => handleDeleteOrder(order.id)}
+                    >
+                      <Trash2 className="w-4 h-4 mr-1" />
+                      Delete
+                    </Button>
                   </div>
                 </div>
               ))}
