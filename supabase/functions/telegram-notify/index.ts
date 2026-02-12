@@ -101,16 +101,35 @@ serve(async (req) => {
       ? customerTelegram 
       : `@${customerTelegram}`;
 
+    // Get full order details from database for email/phone
+    let customerEmail = '';
+    let customerPhone = '';
+    let customerNotes = '';
+    
+    if (orderId) {
+      const { data: orderData } = await supabase
+        .from('orders')
+        .select('guest_email, guest_phone, guest_notes, account_email')
+        .eq('id', orderId)
+        .single();
+      
+      if (orderData) {
+        customerEmail = orderData.guest_email || '';
+        customerPhone = orderData.guest_phone || '';
+        customerNotes = orderData.guest_notes || '';
+      }
+    }
+
     const message = `${emoji} *${title}*
 
 📋 Order: \`${orderId.slice(0, 8)}\`
 👤 Customer: ${customerName || 'Guest'}
-📱 Telegram: ${telegramHandle}
+📱 Telegram: ${telegramHandle}${customerEmail ? `\n📧 Email: ${customerEmail}` : ''}${customerPhone ? `\n📞 Phone: ${customerPhone}` : ''}
 💵 Total: *$${totalAmount.toFixed(2)}*
 
 🛍️ Items:
 ${itemsList}
-
+${customerNotes ? `\n📝 Notes: ${customerNotes}` : ''}
 ${status === 'new' ? '⏳ Awaiting payment verification...' : ''}
 ${status === 'paid' ? '🎉 Payment verified! Ready to fulfill.' : ''}`;
 
