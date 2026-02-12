@@ -76,7 +76,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
             dark:from-white/10 pointer-events-none opacity-60" />
           
           {/* Image Container with Product Photo */}
-          <div className={`relative h-40 bg-gradient-to-br ${getAppColor(product.app)} overflow-hidden aspect-square`}>
+          <div className={`relative h-40 bg-gradient-to-br ${getAppColor(product.app)} overflow-hidden`}>
             {/* Background Blur Layer */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent z-10" />
             
@@ -86,7 +86,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
                 <img 
                   src={product.image_url!}
                   alt={product.name}
-                  className="w-full h-full object-cover aspect-square transition-transform duration-500 group-hover:scale-110"
+                  className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110"
                   onError={() => setImageError(true)}
                 />
               ) : (

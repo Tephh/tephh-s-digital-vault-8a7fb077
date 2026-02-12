@@ -45,7 +45,7 @@ serve(async (req) => {
       const { data: pendingOrders, error } = await supabase
         .from('orders')
         .select(`
-          id, created_at, guest_name, guest_telegram, total_amount, status,
+          id, created_at, guest_name, guest_telegram, guest_email, guest_phone, guest_notes, total_amount, status,
           order_items (product_name, quantity, unit_price)
         `)
         .eq('status', 'pending')
@@ -84,12 +84,12 @@ serve(async (req) => {
 
 🆔 \`${order.id.slice(0, 8)}\`
 👤 ${order.guest_name || 'Guest'}
-📱 ${telegramHandle}
+📱 ${telegramHandle}${order.guest_email ? `\n📧 ${order.guest_email}` : ''}${order.guest_phone ? `\n📞 ${order.guest_phone}` : ''}
 💵 *$${order.total_amount.toFixed(2)}*
 ⏰ ${timeAgo}
 
 🛍️ Items:
-${items}`;
+${items}${order.guest_notes ? `\n\n📝 Notes: ${order.guest_notes}` : ''}`;
 
         const keyboard = {
           inline_keyboard: [
