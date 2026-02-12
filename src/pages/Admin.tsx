@@ -39,7 +39,10 @@ import {
   ExternalLink,
   Ban,
   Image,
-  Upload
+  Upload,
+  Eye,
+  EyeOff,
+  Copy
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -253,6 +256,36 @@ const Admin: React.FC = () => {
       
       if (error) throw error;
       toast.success('Product deleted!');
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleToggleProduct = async (product: Product) => {
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ is_active: !product.is_active })
+        .eq('id', product.id);
+      
+      if (error) throw error;
+      toast.success(product.is_active ? 'Product hidden!' : 'Product visible!');
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleDuplicateProduct = async (product: Product) => {
+    try {
+      const { id, ...rest } = product;
+      const { error } = await supabase
+        .from('products')
+        .insert({ ...rest, name: `${product.name} (Copy)` });
+      
+      if (error) throw error;
+      toast.success('Product duplicated!');
       fetchData();
     } catch (error: any) {
       toast.error(error.message);
@@ -650,6 +683,12 @@ const Admin: React.FC = () => {
                     <p className="text-sm text-muted-foreground">Stock: {product.stock}</p>
                   </div>
                   <div className="flex gap-2">
+                    <Button variant="outline" size="icon" onClick={() => handleToggleProduct(product)} title={product.is_active ? 'Hide product' : 'Show product'}>
+                      {product.is_active ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={() => handleDuplicateProduct(product)} title="Duplicate product">
+                      <Copy className="w-4 h-4" />
+                    </Button>
                     <Button variant="outline" size="icon" onClick={() => openEditProduct(product)}>
                       <Edit className="w-4 h-4" />
                     </Button>
