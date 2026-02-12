@@ -160,6 +160,9 @@ const Checkout: React.FC = () => {
       setOrderId(order.id);
       setOrderError(null);
 
+      // Save telegram for guest order tracking
+      localStorage.setItem('guest_telegram', formData.telegram.trim().replace(/^@/, ''));
+
       // Send Telegram notification (non-blocking)
       supabase.functions.invoke('telegram-notify', {
         body: {
@@ -599,11 +602,9 @@ const Checkout: React.FC = () => {
                   <Link to="/shop" className="flex-1">
                     <Button variant="outline" className="w-full">Continue Shopping</Button>
                   </Link>
-                  {user && (
-                    <Link to="/dashboard" className="flex-1">
-                      <Button className="w-full btn-gold">View Orders</Button>
-                    </Link>
-                  )}
+                  <Link to="/track-order" className="flex-1">
+                    <Button className="w-full btn-gold">Track My Order</Button>
+                  </Link>
                 </div>
               </div>
             </div>

@@ -19,6 +19,7 @@ import FAQ from "./pages/FAQ";
 import Policy from "./pages/Policy";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import TrackOrder from "./pages/TrackOrder";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ const App = () => (
                 <Route path="/policy" element={<Policy />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/track-order" element={<TrackOrder />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
