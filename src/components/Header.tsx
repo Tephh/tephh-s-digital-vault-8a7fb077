@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingCart, Menu, X, Moon, Sun, Heart, Globe, User } from 'lucide-react';
+import { ShoppingCart, Menu, X, Moon, Sun, Heart, Globe, User, Package } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -153,11 +153,19 @@ const Header: React.FC = () => {
                   </Button>
                 </Link>
               ) : (
-                <Link to="/login" className="hidden md:block">
-                  <Button variant="outline" size="sm">
-                    {t('nav.login')}
-                  </Button>
-                </Link>
+                <div className="hidden md:flex items-center gap-2">
+                  <Link to="/track-order">
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      <Package className="w-4 h-4" />
+                      <span className="hidden lg:inline">Track Order</span>
+                    </Button>
+                  </Link>
+                  <Link to="/login">
+                    <Button variant="outline" size="sm">
+                      {t('nav.login')}
+                    </Button>
+                  </Link>
+                </div>
               )}
 
               {/* Mobile Menu Toggle */}
@@ -203,9 +211,14 @@ const Header: React.FC = () => {
                 </Link>
               )}
               {!user && (
-                <Link to="/login" className="py-2" onClick={() => setIsMenuOpen(false)}>
-                  <Button className="w-full">{t('nav.login')}</Button>
-                </Link>
+                <>
+                  <Link to="/track-order" className="py-2 font-medium" onClick={() => setIsMenuOpen(false)}>
+                    📦 Track Order
+                  </Link>
+                  <Link to="/login" className="py-2" onClick={() => setIsMenuOpen(false)}>
+                    <Button className="w-full">{t('nav.login')}</Button>
+                  </Link>
+                </>
               )}
             </div>
           </div>
