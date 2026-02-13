@@ -107,11 +107,11 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
       />
 
       {value ? (
-        <div className={`relative ${aspectClasses[aspectRatio]} rounded-xl overflow-hidden border border-border bg-muted/50`}>
+        <div className={`relative ${aspectClasses[aspectRatio]} rounded-xl overflow-hidden border border-border bg-muted/50 flex items-center justify-center`}>
           <img
             src={value}
             alt="Uploaded"
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain p-2"
           />
           <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
             <Button
