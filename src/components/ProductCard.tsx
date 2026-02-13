@@ -83,12 +83,15 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
             {/* Product Image or App Icon */}
             <div className="absolute inset-0 flex items-center justify-center">
               {hasProductImage ? (
-                <img 
-                  src={product.image_url!}
-                  alt={product.name}
-                  className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110"
-                  onError={() => setImageError(true)}
-                />
+                <div className="w-full h-full flex items-center justify-center p-4">
+                  <img 
+                    src={product.image_url!}
+                    alt={product.name}
+                    className="max-w-full max-h-full object-contain transition-transform duration-500 group-hover:scale-110"
+                    style={{ aspectRatio: '1/1' }}
+                    onError={() => setImageError(true)}
+                  />
+                </div>
               ) : (
                 <div className="w-24 h-24 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
                   <img 

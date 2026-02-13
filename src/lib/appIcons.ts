@@ -3,6 +3,7 @@ import youtubeIcon from '@/assets/icons/youtube.png';
 import capcutIcon from '@/assets/icons/capcut.png';
 import alightIcon from '@/assets/icons/alight.png';
 import discordIcon from '@/assets/icons/discord.png';
+import netflixIcon from '@/assets/icons/netflix.png';
 
 export const appIcons: Record<string, string> = {
   spotify: spotifyIcon,
@@ -10,6 +11,7 @@ export const appIcons: Record<string, string> = {
   capcut: capcutIcon,
   alight: alightIcon,
   discord: discordIcon,
+  netflix: netflixIcon,
 };
 
 export const getAppIcon = (app: string): string => {
@@ -23,6 +25,7 @@ export const getAppColor = (app: string): string => {
     capcut: 'from-violet-500 to-purple-600',
     alight: 'from-orange-500 to-pink-500',
     discord: 'from-indigo-500 to-purple-600',
+    netflix: 'from-red-600 to-red-800',
   };
   return colors[app] || 'from-primary to-primary';
 };
@@ -34,6 +37,7 @@ export const getAppName = (app: string): string => {
     capcut: 'CapCut',
     alight: 'Alight Motion',
     discord: 'Discord',
+    netflix: 'Netflix',
   };
   return names[app] || app;
 };
@@ -45,6 +49,7 @@ export const getAppEmoji = (app: string): string => {
     capcut: '🎬',
     alight: '✨',
     discord: '💬',
+    netflix: '🎬',
   };
   return emojis[app] || '📱';
 };

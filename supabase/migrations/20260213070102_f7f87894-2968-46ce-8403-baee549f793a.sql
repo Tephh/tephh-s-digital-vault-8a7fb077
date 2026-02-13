@@ -1,0 +1,2 @@
+ALTER TABLE public.products DROP CONSTRAINT products_app_check;
+ALTER TABLE public.products ADD CONSTRAINT products_app_check CHECK (app = ANY (ARRAY['spotify'::text, 'youtube'::text, 'capcut'::text, 'alight'::text, 'discord'::text, 'netflix'::text]));
