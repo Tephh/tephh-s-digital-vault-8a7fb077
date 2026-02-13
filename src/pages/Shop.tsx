@@ -43,6 +43,7 @@ const Shop: React.FC = () => {
     { id: 'capcut', label: 'CapCut', icon: '🎬' },
     { id: 'alight', label: 'Alight Motion', icon: '✨' },
     { id: 'discord', label: 'Discord', icon: '💬' },
+    { id: 'netflix', label: 'Netflix', icon: '🎬' },
   ];
 
   // Filter and sort products
