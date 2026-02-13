@@ -19,6 +19,7 @@ import {
   Send,
   CheckCircle,
   AlertCircle,
+  XCircle,
   Clock,
   MessageCircle
 } from 'lucide-react';
@@ -40,7 +41,7 @@ const Checkout: React.FC = () => {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [qrData, setQrData] = useState<{ qrString: string; md5: string } | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
-  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid'>('pending');
+  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid' | 'failed'>('pending');
   
   const [formData, setFormData] = useState({
     name: profile?.full_name || '',
@@ -227,7 +228,8 @@ const Checkout: React.FC = () => {
             clearCart();
             setStep('complete');
             toast.success('🎉 Payment confirmed by admin! Thank you for your order.');
-          } else if (newStatus === 'cancelled') {
+          } else if (newStatus === 'cancelled' || newStatus === 'rejected') {
+            setPaymentStatus('failed');
             toast.error('❌ Order was rejected by admin. Please contact @tephh on Telegram.');
           }
         }
@@ -500,65 +502,91 @@ const Checkout: React.FC = () => {
           {step === 'payment' && qrData && (
             <div className="max-w-lg mx-auto">
               <div className="glass-card p-6 md:p-8 text-center">
-                <h2 className="text-2xl font-bold mb-2">Scan to Pay</h2>
-                <p className="text-muted-foreground mb-6">
-                  Scan the KHQR code with your banking app
-                </p>
+                {paymentStatus === 'failed' ? (
+                  <>
+                    <div className="w-20 h-20 bg-destructive/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <XCircle className="w-10 h-10 text-destructive" />
+                    </div>
+                    <h2 className="text-2xl font-bold mb-2">Payment Failed</h2>
+                    <p className="text-muted-foreground mb-6">
+                      Your order was rejected by the admin. Please contact support for assistance.
+                    </p>
+                    <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg mb-6">
+                      <p className="text-sm text-destructive">
+                        Order ID: <span className="font-mono">{orderId?.slice(0, 8)}...</span>
+                      </p>
+                    </div>
+                    <div className="flex gap-4">
+                      <Link to="/shop" className="flex-1">
+                        <Button variant="outline" className="w-full">Back to Shop</Button>
+                      </Link>
+                      <a href="https://t.me/tephh" target="_blank" rel="noopener noreferrer" className="flex-1">
+                        <Button className="w-full btn-gold gap-2">
+                          <MessageCircle className="w-4 h-4" />
+                          Contact Support
+                        </Button>
+                      </a>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-2xl font-bold mb-2">Scan to Pay</h2>
+                    <p className="text-muted-foreground mb-6">
+                      Scan the KHQR code with your banking app
+                    </p>
 
-                {/* QR Code */}
-                <div className="bg-white p-6 rounded-xl inline-block mb-6">
-                  <QRCodeSVG
-                    value={qrData.qrString}
-                    size={250}
-                    level="H"
-                    includeMargin
-                  />
-                </div>
+                    {/* QR Code */}
+                    <div className="bg-white p-6 rounded-xl inline-block mb-6">
+                      <QRCodeSVG
+                        value={qrData.qrString}
+                        size={250}
+                        level="H"
+                        includeMargin
+                      />
+                    </div>
 
-                {/* Payment Details */}
-                <div className="text-left space-y-4 mb-6">
-                  <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                    <span className="text-muted-foreground">Amount</span>
-                    <span className="text-2xl font-bold text-gradient-gold">
-                      ${getDiscountedPrice().toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                    <span className="text-muted-foreground">Merchant</span>
-                    <span className="font-medium">{MERCHANT_CONFIG.merchantName}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                    <span className="text-muted-foreground">Order ID</span>
-                    <span className="font-mono text-sm">{orderId?.slice(0, 8)}...</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                    <span className="text-muted-foreground">Status</span>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      paymentStatus === 'paid' 
-                        ? 'bg-green-500/20 text-green-500' 
-                        : 'bg-primary/20 text-primary'
-                    }`}>
-                      {paymentStatus === 'paid' ? '✓ Paid' : '⏳ Awaiting Admin Confirmation'}
-                    </span>
-                  </div>
-                </div>
+                    {/* Payment Details */}
+                    <div className="text-left space-y-4 mb-6">
+                      <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                        <span className="text-muted-foreground">Amount</span>
+                        <span className="text-2xl font-bold text-gradient-gold">
+                          ${getDiscountedPrice().toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                        <span className="text-muted-foreground">Merchant</span>
+                        <span className="font-medium">{MERCHANT_CONFIG.merchantName}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                        <span className="text-muted-foreground">Order ID</span>
+                        <span className="font-mono text-sm">{orderId?.slice(0, 8)}...</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                        <span className="text-muted-foreground">Status</span>
+                        <span className="px-3 py-1 rounded-full text-sm font-medium bg-primary/20 text-primary">
+                          ⏳ Awaiting Admin Confirmation
+                        </span>
+                      </div>
+                    </div>
 
-                <p className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg mb-4">
-                  💡 After scanning and paying, an admin will verify your payment. 
-                  This page will update automatically once confirmed.
-                </p>
+                    <p className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg mb-4">
+                      💡 After scanning and paying, an admin will verify your payment. 
+                      This page will update automatically once confirmed.
+                    </p>
 
-                <a 
-                  href="https://t.me/tephh" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="w-full"
-                >
-                  <Button variant="outline" className="w-full gap-2">
-                    <MessageCircle className="w-4 h-4" />
-                    Contact Admin via Telegram
-                  </Button>
-                </a>
+                    <a 
+                      href="https://t.me/tephh" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="w-full"
+                    >
+                      <Button variant="outline" className="w-full gap-2">
+                        <MessageCircle className="w-4 h-4" />
+                        Contact Admin via Telegram
+                      </Button>
+                    </a>
+                  </>
+                )}
               </div>
             </div>
           )}
