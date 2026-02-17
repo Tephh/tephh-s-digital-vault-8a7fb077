@@ -667,7 +667,7 @@ const Admin: React.FC = () => {
               {products.map(product => (
                 <div key={product.id} className="glass-card p-4 flex items-center gap-4">
                   <img 
-                    src={getAppIcon(product.app)} 
+                    src={product.image_url || getAppIcon(product.app)} 
                     alt={product.app}
                     className="w-12 h-12 rounded-lg object-contain bg-muted/50 p-1"
                   />
@@ -730,6 +730,9 @@ const Admin: React.FC = () => {
                           <SelectItem value="capcut">CapCut</SelectItem>
                           <SelectItem value="alight">Alight Motion</SelectItem>
                           <SelectItem value="discord">Discord</SelectItem>
+                          <SelectItem value="netflix">Netflix</SelectItem>
+                          <SelectItem value="chatgpt">ChatGPT Plus</SelectItem>
+                          <SelectItem value="gemini">Gemini AI</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

@@ -12,6 +12,8 @@ export const appIcons: Record<string, string> = {
   alight: alightIcon,
   discord: discordIcon,
   netflix: netflixIcon,
+  chatgpt: spotifyIcon, // placeholder - will use product image_url
+  gemini: spotifyIcon, // placeholder - will use product image_url
 };
 
 export const getAppIcon = (app: string): string => {
@@ -26,6 +28,8 @@ export const getAppColor = (app: string): string => {
     alight: 'from-orange-500 to-pink-500',
     discord: 'from-indigo-500 to-purple-600',
     netflix: 'from-red-600 to-red-800',
+    chatgpt: 'from-emerald-500 to-teal-600',
+    gemini: 'from-blue-500 to-indigo-600',
   };
   return colors[app] || 'from-primary to-primary';
 };
@@ -38,6 +42,8 @@ export const getAppName = (app: string): string => {
     alight: 'Alight Motion',
     discord: 'Discord',
     netflix: 'Netflix',
+    chatgpt: 'ChatGPT Plus',
+    gemini: 'Gemini AI',
   };
   return names[app] || app;
 };
@@ -50,6 +56,8 @@ export const getAppEmoji = (app: string): string => {
     alight: '✨',
     discord: '💬',
     netflix: '🎬',
+    chatgpt: '🤖',
+    gemini: '✨',
   };
   return emojis[app] || '📱';
 };

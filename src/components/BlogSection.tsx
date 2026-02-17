@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Music, Video, Film, Sparkles, MessageCircle, ChevronRight, Ban, Download, Star } from 'lucide-react';
+import { Music, Video, Film, Sparkles, MessageCircle, ChevronRight, Ban, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getAppIcon } from '@/lib/appIcons';
 
@@ -10,19 +10,8 @@ const appBenefits = [
     name: 'Spotify Premium',
     icon: Music,
     color: 'from-green-500 to-green-600',
-    benefits: [
-      'Ad-free music streaming',
-      'Unlimited skips',
-      'Offline downloads',
-      'High quality audio (320kbps)',
-      'Play any song on demand',
-    ],
-    freeIssues: [
-      'Annoying ads every few songs',
-      'Limited skips (6 per hour)',
-      'No offline mode',
-      'Shuffle play only on mobile',
-    ],
+    benefits: ['Ad-free music streaming', 'Unlimited skips', 'Offline downloads', 'High quality audio (320kbps)', 'Play any song on demand'],
+    freeIssues: ['Annoying ads every few songs', 'Limited skips (6 per hour)', 'No offline mode', 'Shuffle play only on mobile'],
     latestUpdate: 'Now supports AI DJ feature and lossless audio!',
   },
   {
@@ -30,90 +19,66 @@ const appBenefits = [
     name: 'YouTube Premium',
     icon: Video,
     color: 'from-red-500 to-red-600',
-    benefits: [
-      'Ad-free videos',
-      'Background play',
-      'Download videos offline',
-      'YouTube Music Premium included',
-      'Picture-in-Picture mode',
-    ],
-    freeIssues: [
-      'Multiple ads before and during videos',
-      'No background playback',
-      'Cannot download videos',
-      'Ads interrupt your experience',
-    ],
+    benefits: ['Ad-free videos', 'Background play', 'Download videos offline', 'YouTube Music Premium included', 'Picture-in-Picture mode'],
+    freeIssues: ['Multiple ads before and during videos', 'No background playback', 'Cannot download videos', 'Ads interrupt your experience'],
     latestUpdate: 'Enhanced video quality up to 4K HDR with Premium!',
+  },
+  {
+    app: 'netflix',
+    name: 'Netflix',
+    icon: Film,
+    color: 'from-red-600 to-red-800',
+    benefits: ['Stream movies & TV shows', 'Multiple quality options (480p-4K)', 'Download for offline', 'No ads ever', 'Multiple profiles'],
+    freeIssues: ['No free tier available', 'Basic plan has ads', 'Limited device support', 'Price keeps increasing'],
+    latestUpdate: 'All quality tiers from 480p to 4K available at best prices!',
   },
   {
     app: 'capcut',
     name: 'CapCut Pro',
     icon: Film,
     color: 'from-violet-500 to-purple-600',
-    benefits: [
-      'Remove watermark',
-      'Access all effects & filters',
-      'Premium templates',
-      'Cloud storage',
-      'Export in 4K quality',
-    ],
-    freeIssues: [
-      'Watermark on exports',
-      'Limited effects',
-      'Basic templates only',
-      'Limited export options',
-    ],
+    benefits: ['Remove watermark', 'Access all effects & filters', 'Premium templates', 'Cloud storage', 'Export in 4K quality'],
+    freeIssues: ['Watermark on exports', 'Limited effects', 'Basic templates only', 'Limited export options'],
     latestUpdate: 'New AI video enhancement and auto-captions!',
-  },
-  {
-    app: 'alight',
-    name: 'Alight Motion',
-    icon: Sparkles,
-    color: 'from-orange-500 to-pink-500',
-    benefits: [
-      'No watermark',
-      'All effects unlocked',
-      'Premium presets',
-      'Vector graphics',
-      'Keyframe animation',
-    ],
-    freeIssues: [
-      'Watermark on exports',
-      'Limited effects',
-      'Ads interruption',
-      'Basic features only',
-    ],
-    latestUpdate: 'Professional motion graphics at the cheapest price!',
   },
   {
     app: 'discord',
     name: 'Discord Nitro',
     icon: MessageCircle,
     color: 'from-indigo-500 to-purple-600',
-    benefits: [
-      'Animated avatars & banners',
-      'Custom emoji anywhere',
-      '100MB file uploads',
-      'HD video streaming',
-      'Server boosts included',
-    ],
-    freeIssues: [
-      'Static profile only',
-      'Limited emoji usage',
-      '8MB file limit',
-      'Basic video quality',
-    ],
+    benefits: ['Animated avatars & banners', 'Custom emoji anywhere', '100MB file uploads', 'HD video streaming', 'Server boosts included'],
+    freeIssues: ['Static profile only', 'Limited emoji usage', '8MB file limit', 'Basic video quality'],
     latestUpdate: 'Now includes 2 server boosts and custom profiles!',
   },
 ];
 
 const BlogSection: React.FC = () => {
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('animate-in');
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    const elements = sectionRef.current?.querySelectorAll('.scroll-reveal');
+    elements?.forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <section className="py-20 relative">
+    <section ref={sectionRef} className="py-20 relative">
       <div className="absolute inset-0 angkor-pattern opacity-30" />
       
       <div className="container mx-auto px-4 relative z-10">
-        <div className="text-center space-y-4 mb-16">
+        <div className="scroll-reveal text-center space-y-4 mb-16 opacity-0 translate-y-8 transition-all duration-700">
           <h2 className="text-3xl md:text-4xl font-bold">
             Why <span className="text-gradient-gold">Premium</span> Matters
           </h2>
@@ -126,7 +91,8 @@ const BlogSection: React.FC = () => {
           {appBenefits.map((app, index) => (
             <div 
               key={app.app}
-              className={`glass-card p-6 md:p-8 ${index % 2 === 0 ? '' : 'md:flex-row-reverse'}`}
+              className={`scroll-reveal glass-card p-6 md:p-8 opacity-0 translate-y-8 transition-all duration-700`}
+              style={{ transitionDelay: `${index * 100}ms` }}
             >
               <div className="flex flex-col md:flex-row gap-6 md:gap-8">
                 {/* App Header */}
@@ -148,7 +114,6 @@ const BlogSection: React.FC = () => {
 
                 {/* Comparison */}
                 <div className="md:w-2/3 grid md:grid-cols-2 gap-4">
-                  {/* Free Issues */}
                   <div className="p-4 rounded-xl bg-destructive/5 border border-destructive/10">
                     <h4 className="font-semibold text-destructive mb-3 flex items-center gap-2">
                       <Ban className="w-4 h-4" />
@@ -164,7 +129,6 @@ const BlogSection: React.FC = () => {
                     </ul>
                   </div>
 
-                  {/* Premium Benefits */}
                   <div className="p-4 rounded-xl bg-primary/5 border border-primary/10">
                     <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
                       <Star className="w-4 h-4" />
@@ -185,7 +149,7 @@ const BlogSection: React.FC = () => {
           ))}
         </div>
 
-        <div className="text-center mt-12">
+        <div className="scroll-reveal text-center mt-12 opacity-0 translate-y-8 transition-all duration-700">
           <Link to="/shop">
             <Button className="btn-primary-gradient text-lg px-8 py-6">
               Browse All Products
