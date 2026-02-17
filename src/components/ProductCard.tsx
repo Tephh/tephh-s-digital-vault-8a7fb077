@@ -116,19 +116,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index = 0 }) => {
               <Heart className={`w-4 h-4 ${inWishlist ? 'fill-current' : ''}`} />
             </button>
 
-            {/* App Icon Overlay (when showing product image) */}
-            {hasProductImage && (
-              <div className="absolute bottom-3 left-3 z-20">
-                <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md border border-white/30 
-                  flex items-center justify-center shadow-lg">
-                  <img 
-                    src={getAppIcon(product.app)} 
-                    alt={product.app}
-                    className="w-6 h-6 object-contain"
-                  />
-                </div>
-              </div>
-            )}
+            {/* Category & App Label (when showing product image) */}
 
             {/* Duration Badge */}
             {product.duration && (

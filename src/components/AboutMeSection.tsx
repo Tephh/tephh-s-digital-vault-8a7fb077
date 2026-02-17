@@ -1,7 +1,27 @@
-import React from 'react';
-import { Code, Brain, Gamepad2, GraduationCap, Coffee, Music, Crown, Terminal } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { Code, Brain, Gamepad2, GraduationCap, Coffee, Crown } from 'lucide-react';
 
 const AboutMeSection: React.FC = () => {
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('animate-in');
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+
+    const elements = sectionRef.current?.querySelectorAll('.scroll-reveal');
+    elements?.forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, []);
+
   const interests = [
     { icon: GraduationCap, label: 'Civil Engineering Student', color: 'text-blue-500' },
     { icon: Brain, label: 'AI Research Enthusiast', color: 'text-purple-500' },
@@ -12,20 +32,20 @@ const AboutMeSection: React.FC = () => {
   ];
 
   return (
-    <section className="py-20 relative overflow-hidden">
+    <section ref={sectionRef} className="py-20 relative overflow-hidden">
       <div className="container mx-auto px-4">
-        <div className="text-center space-y-4 mb-12">
+        <div className="scroll-reveal text-center space-y-4 mb-12 opacity-0 translate-y-8 transition-all duration-700">
           <h2 className="text-3xl md:text-4xl font-bold">
             Meet the <span className="text-gradient-gold">Developer</span>
           </h2>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            A glimpse into who's behind Tephh Shop
+            A glimpse into who's behind Pu-Tephh Shop
           </p>
         </div>
 
         <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8">
           {/* About Card */}
-          <div className="glass-card p-6 space-y-6">
+          <div className="scroll-reveal glass-card p-6 space-y-6 opacity-0 translate-y-8 transition-all duration-700 delay-100">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-3xl">
                 👨‍💻
@@ -54,7 +74,7 @@ const AboutMeSection: React.FC = () => {
           </div>
 
           {/* Terminal Style Card */}
-          <div className="glass-card overflow-hidden">
+          <div className="scroll-reveal glass-card overflow-hidden opacity-0 translate-y-8 transition-all duration-700 delay-200">
             <div className="bg-secondary/80 px-4 py-2 flex items-center gap-2">
               <div className="flex gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-red-500" />

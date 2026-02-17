@@ -1,9 +1,28 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Ban, Infinity, Sparkles, Download, Music, Video } from 'lucide-react';
+import { Ban, Infinity, Sparkles } from 'lucide-react';
 
 const WhyPremiumSection: React.FC = () => {
   const { t } = useTheme();
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('animate-in');
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+
+    const elements = sectionRef.current?.querySelectorAll('.scroll-reveal');
+    elements?.forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, []);
 
   const reasons = [
     {
@@ -27,13 +46,13 @@ const WhyPremiumSection: React.FC = () => {
   ];
 
   return (
-    <section className="py-20 relative overflow-hidden">
+    <section ref={sectionRef} className="py-20 relative overflow-hidden">
       {/* Background Decoration */}
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-secondary/30 to-transparent" />
 
       <div className="container mx-auto px-4 relative z-10">
         {/* Section Header */}
-        <div className="text-center space-y-4 mb-16">
+        <div className="scroll-reveal text-center space-y-4 mb-16 opacity-0 translate-y-8 transition-all duration-700">
           <h2 className="text-3xl md:text-4xl font-bold">
             {t('why.title')}
           </h2>
@@ -45,7 +64,7 @@ const WhyPremiumSection: React.FC = () => {
         {/* Comparison Cards */}
         <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto mb-16">
           {/* Free Version */}
-          <div className="glass-card p-8 relative overflow-hidden">
+          <div className="scroll-reveal glass-card p-8 relative overflow-hidden opacity-0 translate-y-8 transition-all duration-700 delay-100">
             <div className="absolute top-0 right-0 w-32 h-32 bg-destructive/10 rounded-full blur-3xl" />
             <h3 className="text-xl font-bold mb-6 text-destructive">Free Version 😔</h3>
             <ul className="space-y-4">
@@ -69,7 +88,7 @@ const WhyPremiumSection: React.FC = () => {
           </div>
 
           {/* Premium Version */}
-          <div className="glass-card p-8 relative overflow-hidden border-2 border-primary/30">
+          <div className="scroll-reveal glass-card p-8 relative overflow-hidden border-2 border-primary/30 opacity-0 translate-y-8 transition-all duration-700 delay-200">
             <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl" />
             <div className="absolute -top-3 -right-3">
               <span className="countdown-badge text-xs">BEST VALUE</span>
@@ -101,8 +120,8 @@ const WhyPremiumSection: React.FC = () => {
           {reasons.map((reason, index) => (
             <div
               key={index}
-              className="glass-card-hover p-8 text-center space-y-4"
-              style={{ animationDelay: `${index * 150}ms` }}
+              className={`scroll-reveal glass-card-hover p-8 text-center space-y-4 opacity-0 translate-y-8 transition-all duration-700`}
+              style={{ transitionDelay: `${300 + index * 150}ms` }}
             >
               <div className={`w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br ${reason.gradient} flex items-center justify-center text-white shadow-lg`}>
                 {reason.icon}

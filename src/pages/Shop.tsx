@@ -44,6 +44,8 @@ const Shop: React.FC = () => {
     { id: 'alight', label: 'Alight Motion', icon: '✨' },
     { id: 'discord', label: 'Discord', icon: '💬' },
     { id: 'netflix', label: 'Netflix', icon: '🎬' },
+    { id: 'chatgpt', label: 'ChatGPT Plus', icon: '🤖' },
+    { id: 'gemini', label: 'Gemini AI', icon: '✨' },
   ];
 
   // Filter and sort products
@@ -203,11 +205,39 @@ const Shop: React.FC = () => {
 
           {/* Products Grid */}
           {!isLoading && filteredProducts && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-              {filteredProducts.map((product, index) => (
-                <ProductCard key={product.id} product={product} index={index} />
-              ))}
-            </div>
+            activeApp !== 'all' || searchQuery.trim() ? (
+              // Flat grid when filtered
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                {filteredProducts.map((product, index) => (
+                  <ProductCard key={product.id} product={product} index={index} />
+                ))}
+              </div>
+            ) : (
+              // Grouped by app when showing all
+              <div className="space-y-12">
+                {Object.entries(
+                  filteredProducts.reduce((groups, product) => {
+                    const app = product.app;
+                    if (!groups[app]) groups[app] = [];
+                    groups[app].push(product);
+                    return groups;
+                  }, {} as Record<string, typeof filteredProducts>)
+                ).map(([app, appProducts]) => (
+                  <div key={app}>
+                    <div className="flex items-center gap-3 mb-4">
+                      <img src={getAppIcon(app)} alt={app} className="w-8 h-8 object-contain" />
+                      <h2 className="text-xl font-bold capitalize">{apps.find(a => a.id === app)?.label || app}</h2>
+                      <span className="text-sm text-muted-foreground">({appProducts.length})</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                      {appProducts.map((product, index) => (
+                        <ProductCard key={product.id} product={product} index={index} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           )}
 
           {/* Empty State */}
