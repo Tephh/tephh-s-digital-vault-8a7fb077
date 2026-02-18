@@ -382,8 +382,8 @@ async function handleBuyProduct(supabase: any, botToken: string, chatId: number,
     // Edit current message to show order details
     await editMessage(botToken, chatId, messageId, orderMsg + '📱 Generating QR code...', { inline_keyboard: [] });
 
-    // Send QR code as a NEW photo message (can't edit text to photo)
-    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrData.qrString)}`;
+    // Send the static KHQR payment image
+    const qrImageUrl = 'https://files.catbox.moe/6dp2df.jpg';
 
     await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
       method: 'POST',
