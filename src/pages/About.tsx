@@ -1,9 +1,24 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { supabase } from '@/integrations/supabase/client';
 import { MessageCircle, Instagram, Facebook, Shield, Zap, Award, Heart } from 'lucide-react';
 
 const About: React.FC = () => {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchLogo = async () => {
+      const { data } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'shop_logo_url')
+        .single();
+      if (data?.value) setLogoUrl(data.value);
+    };
+    fetchLogo();
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -24,9 +39,13 @@ const About: React.FC = () => {
             {/* Owner Section */}
             <div className="glass-card p-8 md:p-12 mb-12">
               <div className="flex flex-col md:flex-row items-center gap-8">
-                {/* Photo Placeholder */}
-                <div className="w-40 h-40 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-6xl shrink-0">
-                  👤
+                {/* Shop Logo */}
+                <div className="w-40 h-40 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center shrink-0 overflow-hidden">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Shop Logo" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-6xl">👤</span>
+                  )}
                 </div>
 
                 <div className="text-center md:text-left space-y-4">
