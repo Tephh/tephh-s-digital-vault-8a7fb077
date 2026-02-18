@@ -5,7 +5,7 @@ import ProductCard from '@/components/ProductCard';
 import { useProducts } from '@/hooks/useProducts';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Loader2, Search, SlidersHorizontal, X } from 'lucide-react';
-import { getAppIcon } from '@/lib/appIcons';
+import { getAppIcon, getAppName, getAppEmoji } from '@/lib/appIcons';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,17 +36,19 @@ const Shop: React.FC = () => {
     { id: 'code', label: 'Codes' },
   ];
 
-  const apps = [
-    { id: 'all', label: 'All Apps', icon: '📱' },
-    { id: 'spotify', label: 'Spotify', icon: '🎵' },
-    { id: 'youtube', label: 'YouTube', icon: '📺' },
-    { id: 'capcut', label: 'CapCut', icon: '🎬' },
-    { id: 'alight', label: 'Alight Motion', icon: '✨' },
-    { id: 'discord', label: 'Discord', icon: '💬' },
-    { id: 'netflix', label: 'Netflix', icon: '🎬' },
-    { id: 'chatgpt', label: 'ChatGPT Plus', icon: '🤖' },
-    { id: 'gemini', label: 'Gemini AI', icon: '✨' },
-  ];
+  // Dynamic apps from actual products
+  const apps = React.useMemo(() => {
+    if (!products) return [{ id: 'all', label: 'All Apps', icon: '📱' }];
+    const uniqueApps = [...new Set(products.map(p => p.app))];
+    return [
+      { id: 'all', label: 'All Apps', icon: '📱' },
+      ...uniqueApps.map(app => ({
+        id: app,
+        label: getAppName(app),
+        icon: getAppEmoji(app),
+      }))
+    ];
+  }, [products]);
 
   // Filter and sort products
   const filteredProducts = React.useMemo(() => {

@@ -19,189 +19,221 @@ serve(async (req) => {
     const update = await req.json();
     console.log('Telegram callback received:', JSON.stringify(update));
 
-    // Get bot token
     let botToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
     if (!botToken) {
-      const { data: settings } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('key', 'telegram_bot_token')
-        .single();
+      const { data: settings } = await supabase.from('settings').select('value').eq('key', 'telegram_bot_token').single();
       botToken = settings?.value;
     }
-
     if (!botToken) {
-      console.error('Bot token not configured');
-      return new Response(JSON.stringify({ error: 'Bot not configured' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({ error: 'Bot not configured' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Get admin chat ID
     let adminChatId = Deno.env.get('TELEGRAM_CHAT_ID');
     if (!adminChatId) {
-      const { data: settings } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('key', 'telegram_chat_id')
-        .single();
+      const { data: settings } = await supabase.from('settings').select('value').eq('key', 'telegram_chat_id').single();
       adminChatId = settings?.value;
     }
 
-    // Handle /start command - show welcome + shop
-    if (update.message?.text === '/start' || update.message?.text === '/shop') {
+    // ─── TEXT COMMANDS ───
+    if (update.message?.text) {
       const chatId = update.message.chat.id;
-      await showShop(supabase, botToken, chatId);
-      return okResponse();
+      const text = update.message.text.trim();
+
+      if (text === '/start' || text === '/shop') {
+        await showMainMenu(botToken, chatId);
+        return okResponse();
+      }
+      if (text === '/check') {
+        await handleCheckCommand(supabase, botToken, chatId);
+        return okResponse();
+      }
+      // If user sends text while we expect info (telegram username for order)
+      // Check if there's a pending order state
+      const stateKey = `order_state_${chatId}`;
+      // We use a simple approach: check if the text looks like a telegram handle
+      // This is handled by callback flow instead
     }
 
-    // Handle /check command - list unverified orders (admin)
-    if (update.message?.text?.startsWith('/check')) {
-      const chatId = update.message.chat.id;
-      await handleCheckCommand(supabase, botToken, chatId);
-      return okResponse();
-    }
-
-    // Handle photo messages (payment screenshot from buyer)
+    // ─── PHOTO (payment screenshot) ───
     if (update.message?.photo) {
       const chatId = update.message.chat.id;
       const username = update.message.from?.username || update.message.from?.first_name || 'Unknown';
-      
-      // Forward the photo to admin
       if (adminChatId) {
-        const photo = update.message.photo[update.message.photo.length - 1]; // highest res
+        const photo = update.message.photo[update.message.photo.length - 1];
         const caption = update.message.caption || '';
-        
         await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: adminChatId,
             photo: photo.file_id,
-            caption: `💳 *Payment Screenshot*\n👤 From: @${username}\n${caption ? `📝 Note: ${caption}` : ''}\n\nPlease verify this payment and use /check to manage orders.`,
+            caption: `💳 *Payment Screenshot*\n👤 From: @${username}\n${caption ? `📝 Note: ${caption}` : ''}\n\nUse /check to manage pending orders.`,
             parse_mode: 'Markdown'
           })
         });
-
-        await sendMessage(botToken, chatId, '✅ Your payment screenshot has been sent to admin for verification!\n\n⏳ Please wait while we confirm your payment. You will be notified once it\'s verified.');
+        await sendMessage(botToken, chatId, '✅ Your payment screenshot has been sent to admin!\n\n⏳ Please wait for verification. You\'ll be notified once confirmed.\n\n📦 Delivery: within 1-3 hours after verification.');
       } else {
         await sendMessage(botToken, chatId, '❌ Admin not configured. Please contact support.');
       }
       return okResponse();
     }
 
-    // Handle callback query (button press)
+    // ─── CALLBACK QUERIES (button presses) ───
     if (update.callback_query) {
-      const callbackData = update.callback_query.data;
+      const data = update.callback_query.data;
       const chatId = update.callback_query.message?.chat?.id;
       const messageId = update.callback_query.message?.message_id;
+      const username = update.callback_query.from?.username || update.callback_query.from?.first_name || 'Unknown';
 
-      // Shop navigation
-      if (callbackData === 'shop') {
-        await answerCallback(botToken, update.callback_query.id, '');
-        await showShop(supabase, botToken, chatId);
+      await answerCallback(botToken, update.callback_query.id, '');
+
+      // ── Main Menu ──
+      if (data === 'main_menu') {
+        await editMainMenu(botToken, chatId, messageId);
         return okResponse();
       }
 
-      // Browse by app
-      if (callbackData.startsWith('app_')) {
-        const app = callbackData.substring(4);
-        await answerCallback(botToken, update.callback_query.id, '');
-        await showAppProducts(supabase, botToken, chatId, app);
+      // ── Products (show all grouped) ──
+      if (data === 'products') {
+        await showAllProducts(supabase, botToken, chatId, messageId);
         return okResponse();
       }
 
-      // View product detail
-      if (callbackData.startsWith('product_')) {
-        const productId = callbackData.substring(8);
-        await answerCallback(botToken, update.callback_query.id, '');
-        await showProductDetail(supabase, botToken, chatId, productId);
+      // ── Browse by app ──
+      if (data.startsWith('app_')) {
+        const app = data.substring(4);
+        await showAppProducts(supabase, botToken, chatId, messageId, app);
         return okResponse();
       }
 
-      // Buy product - create order & show QR
-      if (callbackData.startsWith('buy_')) {
-        const productId = callbackData.substring(4);
-        const username = update.callback_query.from?.username || update.callback_query.from?.first_name || 'Unknown';
-        await answerCallback(botToken, update.callback_query.id, '🛒 Creating order...');
-        await handleBuyProduct(supabase, botToken, chatId, productId, username, adminChatId);
+      // ── Product detail ──
+      if (data.startsWith('product_')) {
+        const productId = data.substring(8);
+        await showProductDetail(supabase, botToken, chatId, messageId, productId);
         return okResponse();
       }
 
-      // Admin: confirm/reject order
-      if (callbackData.startsWith('confirm_') || callbackData.startsWith('reject_')) {
-        await handleOrderAction(supabase, botToken, update.callback_query, callbackData, chatId, messageId);
+      // ── Buy product ──
+      if (data.startsWith('buy_')) {
+        const productId = data.substring(4);
+        await handleBuyProduct(supabase, botToken, chatId, messageId, productId, username, adminChatId);
         return okResponse();
       }
 
-      // Admin: check bank
-      if (callbackData.startsWith('check_')) {
-        const orderId = callbackData.substring(6);
+      // ── Order History ──
+      if (data === 'history') {
+        await showOrderHistory(supabase, botToken, chatId, messageId, username);
+        return okResponse();
+      }
+
+      // ── Account ──
+      if (data === 'account') {
+        await showAccount(botToken, chatId, messageId, username);
+        return okResponse();
+      }
+
+      // ── Q&A ──
+      if (data === 'faq') {
+        await showFAQ(botToken, chatId, messageId);
+        return okResponse();
+      }
+
+      // ── Contact ──
+      if (data === 'contact') {
+        await showContact(botToken, chatId, messageId);
+        return okResponse();
+      }
+
+      // ── Admin: confirm/reject ──
+      if (data.startsWith('confirm_') || data.startsWith('reject_')) {
+        await handleOrderAction(supabase, botToken, update.callback_query, data, chatId, messageId);
+        return okResponse();
+      }
+
+      // ── Admin: check bank ──
+      if (data.startsWith('check_')) {
+        const orderId = data.substring(6);
         await handleCheckBank(supabase, botToken, update.callback_query, orderId, chatId, messageId);
         return okResponse();
       }
 
-      if (callbackData === 'processed') {
+      if (data === 'processed') {
         await answerCallback(botToken, update.callback_query.id, '⚠️ Already processed');
         return okResponse();
       }
 
-      await answerCallback(botToken, update.callback_query.id, '');
       return okResponse();
     }
 
     return okResponse();
-
   } catch (error: unknown) {
     console.error('Telegram callback error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
 
-// ─── SHOP FUNCTIONS ───
+// ═══════════════════════════════════════════════
+// ─── MAIN MENU ───
+// ═══════════════════════════════════════════════
 
-async function showShop(supabase: any, botToken: string, chatId: number) {
-  // Get distinct apps that have active products
+async function showMainMenu(botToken: string, chatId: number) {
+  const text = `🛍️ *Welcome to Pu-Tephh Digital Products!*\n\nPremium accounts & subscriptions at the best prices.\nFast delivery • Trusted service • Full warranty\n\n📱 Choose an option below:`;
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '🛒 Browse Products', callback_data: 'products' }],
+      [{ text: '📋 Order History', callback_data: 'history' }, { text: '👤 Account', callback_data: 'account' }],
+      [{ text: '❓ Q&A', callback_data: 'faq' }, { text: '📞 Contact', callback_data: 'contact' }],
+    ]
+  };
+  await sendMessageWithKeyboard(botToken, chatId, text, keyboard);
+}
+
+async function editMainMenu(botToken: string, chatId: number, messageId: number) {
+  const text = `🛍️ *Welcome to Pu-Tephh Digital Products!*\n\nPremium accounts & subscriptions at the best prices.\nFast delivery • Trusted service • Full warranty\n\n📱 Choose an option below:`;
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '🛒 Browse Products', callback_data: 'products' }],
+      [{ text: '📋 Order History', callback_data: 'history' }, { text: '👤 Account', callback_data: 'account' }],
+      [{ text: '❓ Q&A', callback_data: 'faq' }, { text: '📞 Contact', callback_data: 'contact' }],
+    ]
+  };
+  await editMessage(botToken, chatId, messageId, text, keyboard);
+}
+
+// ═══════════════════════════════════════════════
+// ─── PRODUCTS ───
+// ═══════════════════════════════════════════════
+
+async function showAllProducts(supabase: any, botToken: string, chatId: number, messageId: number) {
   const { data: products } = await supabase
     .from('products')
     .select('app')
     .eq('is_active', true);
 
   if (!products || products.length === 0) {
-    await sendMessage(botToken, chatId, '😔 No products available right now. Check back later!');
+    await editMessage(botToken, chatId, messageId, '😔 No products available right now. Check back later!', {
+      inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
+    });
     return;
   }
 
-  const appEmojis: Record<string, string> = {
-    spotify: '🎵', youtube: '📺', capcut: '🎬',
-    alight: '✨', discord: '💬', netflix: '🎬',
-  };
-  const appNames: Record<string, string> = {
-    spotify: 'Spotify', youtube: 'YouTube', capcut: 'CapCut',
-    alight: 'Alight Motion', discord: 'Discord', netflix: 'Netflix',
-  };
-
-  // Get unique apps
   const uniqueApps = [...new Set(products.map((p: any) => p.app))] as string[];
+  const appCounts: Record<string, number> = {};
+  products.forEach((p: any) => { appCounts[p.app] = (appCounts[p.app] || 0) + 1; });
 
-  const keyboard = {
-    inline_keyboard: uniqueApps.map(app => ([{
-      text: `${appEmojis[app] || '📱'} ${appNames[app] || app}`,
-      callback_data: `app_${app}`
-    }]))
-  };
+  const buttons = uniqueApps.map(app => [{
+    text: `${getAppEmoji(app)} ${getAppName(app)} (${appCounts[app]})`,
+    callback_data: `app_${app}`
+  }]);
+  buttons.push([{ text: '🏠 Main Menu', callback_data: 'main_menu' }]);
 
-  const message = `🛍️ *Welcome to Tephh Shop!*\n\nBrowse our premium accounts & services.\nSelect a category below to get started:\n`;
-
-  await sendMessageWithKeyboard(botToken, chatId, message, keyboard);
+  await editMessage(botToken, chatId, messageId, '📦 *Product Categories*\n\nSelect an app to browse products:', {
+    inline_keyboard: buttons
+  });
 }
 
-async function showAppProducts(supabase: any, botToken: string, chatId: number, app: string) {
+async function showAppProducts(supabase: any, botToken: string, chatId: number, messageId: number, app: string) {
   const { data: products } = await supabase
     .from('products')
     .select('*')
@@ -210,34 +242,30 @@ async function showAppProducts(supabase: any, botToken: string, chatId: number, 
     .order('price', { ascending: true });
 
   if (!products || products.length === 0) {
-    await sendMessage(botToken, chatId, `No products available for this app.`);
+    await editMessage(botToken, chatId, messageId, `No products available for ${getAppName(app)}.`, {
+      inline_keyboard: [[{ text: '⬅️ Back', callback_data: 'products' }], [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
+    });
     return;
   }
 
-  const appNames: Record<string, string> = {
-    spotify: 'Spotify', youtube: 'YouTube', capcut: 'CapCut',
-    alight: 'Alight Motion', discord: 'Discord', netflix: 'Netflix',
-  };
-
-  let message = `📦 *${appNames[app] || app} Products*\n\n`;
-  
+  let text = `${getAppEmoji(app)} *${getAppName(app)} Products*\n\n`;
   const buttons: any[][] = [];
   for (const p of products) {
     const priceStr = `$${Number(p.price).toFixed(2)}`;
-    const durationStr = p.duration ? ` (${p.duration})` : '';
-    message += `• *${p.name}*${durationStr} — ${priceStr}\n`;
+    const durationStr = p.duration ? ` • ${p.duration}` : '';
+    text += `• ${p.name}${durationStr} — *${priceStr}*\n`;
     buttons.push([{
       text: `${p.name} - ${priceStr}`,
       callback_data: `product_${p.id}`
     }]);
   }
+  buttons.push([{ text: '⬅️ Back to Categories', callback_data: 'products' }]);
+  buttons.push([{ text: '🏠 Main Menu', callback_data: 'main_menu' }]);
 
-  buttons.push([{ text: '⬅️ Back to Shop', callback_data: 'shop' }]);
-
-  await sendMessageWithKeyboard(botToken, chatId, message, { inline_keyboard: buttons });
+  await editMessage(botToken, chatId, messageId, text, { inline_keyboard: buttons });
 }
 
-async function showProductDetail(supabase: any, botToken: string, chatId: number, productId: string) {
+async function showProductDetail(supabase: any, botToken: string, chatId: number, messageId: number, productId: string) {
   const { data: product } = await supabase
     .from('products')
     .select('*')
@@ -246,35 +274,37 @@ async function showProductDetail(supabase: any, botToken: string, chatId: number
     .single();
 
   if (!product) {
-    await sendMessage(botToken, chatId, '❌ Product not found or no longer available.');
+    await editMessage(botToken, chatId, messageId, '❌ Product not found or no longer available.', {
+      inline_keyboard: [[{ text: '⬅️ Back', callback_data: 'products' }]]
+    });
     return;
   }
 
   const priceStr = `$${Number(product.price).toFixed(2)}`;
-  const originalStr = product.original_price ? `~$${Number(product.original_price).toFixed(2)}~` : '';
-  
-  let message = `🏷️ *${product.name}*\n\n`;
-  message += `📱 App: ${product.app}\n`;
-  message += `📂 Type: ${product.category}\n`;
-  if (product.duration) message += `⏰ Duration: ${product.duration}\n`;
-  message += `\n💰 Price: *${priceStr}* ${originalStr}\n`;
-  if (product.description) message += `\n📝 ${product.description}\n`;
+  const originalStr = product.original_price ? ` ~$${Number(product.original_price).toFixed(2)}~` : '';
+
+  let text = `🏷️ *${product.name}*\n\n`;
+  text += `${getAppEmoji(product.app)} App: ${getAppName(product.app)}\n`;
+  text += `📂 Type: ${product.category}\n`;
+  if (product.duration) text += `⏰ Duration: ${product.duration}\n`;
+  text += `\n💰 Price: *${priceStr}*${originalStr}\n`;
+  if (product.description) text += `\n📝 ${product.description}\n`;
   if (product.stock !== null && product.stock !== undefined) {
-    message += `\n📦 Stock: ${product.stock > 0 ? product.stock : '❌ Out of stock'}`;
+    text += `\n📦 Stock: ${product.stock > 0 ? `${product.stock} available` : '❌ Out of stock'}`;
   }
 
   const keyboard = {
     inline_keyboard: [
       [{ text: `🛒 Buy Now - ${priceStr}`, callback_data: `buy_${product.id}` }],
-      [{ text: `⬅️ Back to ${product.app}`, callback_data: `app_${product.app}` }],
-      [{ text: '🏠 Back to Shop', callback_data: 'shop' }]
+      [{ text: `⬅️ Back to ${getAppName(product.app)}`, callback_data: `app_${product.app}` }],
+      [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
     ]
   };
 
-  await sendMessageWithKeyboard(botToken, chatId, message, keyboard);
+  await editMessage(botToken, chatId, messageId, text, keyboard);
 }
 
-async function handleBuyProduct(supabase: any, botToken: string, chatId: number, productId: string, username: string, adminChatId: string | undefined) {
+async function handleBuyProduct(supabase: any, botToken: string, chatId: number, messageId: number, productId: string, username: string, adminChatId: string | undefined) {
   const { data: product } = await supabase
     .from('products')
     .select('*')
@@ -283,11 +313,16 @@ async function handleBuyProduct(supabase: any, botToken: string, chatId: number,
     .single();
 
   if (!product) {
-    await sendMessage(botToken, chatId, '❌ Product not found or no longer available.');
+    await editMessage(botToken, chatId, messageId, '❌ Product not found or no longer available.', {
+      inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
+    });
     return;
   }
 
-  // Create order via create-order edge function
+  // Update the current message to show "Creating order..."
+  await editMessage(botToken, chatId, messageId, '⏳ Creating your order...', { inline_keyboard: [] });
+
+  // Create order
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
@@ -308,18 +343,28 @@ async function handleBuyProduct(supabase: any, botToken: string, chatId: number,
 
   const orderRes = await fetch(`${supabaseUrl}/functions/v1/create-order`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${supabaseAnonKey}`,
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
     body: JSON.stringify(orderPayload),
   });
 
-  const orderData = await orderRes.json();
+  let orderData;
+  const contentType = orderRes.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    orderData = await orderRes.json();
+  } else {
+    const text = await orderRes.text();
+    console.error('Non-JSON response from create-order:', text);
+    await editMessage(botToken, chatId, messageId, '❌ Failed to create order. Please try again.', {
+      inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
+    });
+    return;
+  }
 
   if (!orderRes.ok || !orderData.order) {
     console.error('Order creation failed:', orderData);
-    await sendMessage(botToken, chatId, '❌ Failed to create order. Please try again later.');
+    await editMessage(botToken, chatId, messageId, '❌ Failed to create order. Please try again later.', {
+      inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
+    });
     return;
   }
 
@@ -327,54 +372,146 @@ async function handleBuyProduct(supabase: any, botToken: string, chatId: number,
   const qrData = orderData.qr;
   const priceStr = `$${Number(product.price).toFixed(2)}`;
 
-  let message = `✅ *Order Created!*\n\n`;
-  message += `🆔 Order: \`${order.id.slice(0, 8)}\`\n`;
-  message += `🛍️ ${product.name}\n`;
-  message += `💰 Total: *${priceStr}*\n\n`;
+  // Update the message to show order info
+  let orderMsg = `✅ *Order Created!*\n\n`;
+  orderMsg += `🆔 Order: \`${order.id.slice(0, 8)}\`\n`;
+  orderMsg += `🛍️ ${product.name}\n`;
+  orderMsg += `💰 Total: *${priceStr}*\n\n`;
 
   if (qrData?.qrString) {
-    // Generate QR code image via external API
-    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData.qrString)}`;
-    
-    // Send QR code as image
+    // Edit current message to show order details
+    await editMessage(botToken, chatId, messageId, orderMsg + '📱 Generating QR code...', { inline_keyboard: [] });
+
+    // Send QR code as a NEW photo message (can't edit text to photo)
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrData.qrString)}`;
+
     await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
         photo: qrImageUrl,
-        caption: `${message}📱 *Scan this QR to pay via Bakong/KHQR*\n\n💡 After payment, please send a *screenshot* of your payment to this bot. We'll forward it to admin for verification.\n\n⏰ Delivery: 1-3 hours after verification.`,
-        parse_mode: 'Markdown'
+        caption: `📱 *Scan this QR to pay via Bakong/KHQR*\n\n💵 Amount: *${priceStr}*\n\n💡 After payment, send a *screenshot* of your payment to this chat.\n\n⏰ Delivery: 1-3 hours after verification.`,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🏠 Back to Main Menu', callback_data: 'main_menu' }]
+          ]
+        }
       })
     });
   } else {
-    message += `Please contact admin for payment details.\n`;
-    message += `💡 After payment, send a *screenshot* of your payment to this bot.`;
-    await sendMessage(botToken, chatId, message);
+    orderMsg += `Please contact admin for payment details.\n💡 After payment, send a *screenshot* of your payment to this chat.`;
+    await editMessage(botToken, chatId, messageId, orderMsg, {
+      inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
+    });
+  }
+
+  // Notify admin
+  if (adminChatId) {
+    const adminMsg = `🛒 *New Order from Telegram Bot!*\n\n🆔 \`${order.id.slice(0, 8)}\`\n👤 @${username}\n🛍️ ${product.name}\n💰 *${priceStr}*\n\nWaiting for payment screenshot...`;
+    await sendMessageWithKeyboard(botToken, parseInt(adminChatId), adminMsg, {
+      inline_keyboard: [
+        [{ text: '✅ Confirm Paid', callback_data: `confirm_${order.id}` }, { text: '❌ Reject', callback_data: `reject_${order.id}` }],
+        [{ text: '🔍 Check Bank', callback_data: `check_${order.id}` }]
+      ]
+    });
   }
 }
 
+// ═══════════════════════════════════════════════
+// ─── ORDER HISTORY, ACCOUNT, FAQ, CONTACT ───
+// ═══════════════════════════════════════════════
+
+async function showOrderHistory(supabase: any, botToken: string, chatId: number, messageId: number, username: string) {
+  const { data: orders } = await supabase
+    .from('orders')
+    .select('id, created_at, total_amount, status, order_items(product_name, quantity)')
+    .or(`guest_telegram.eq.@${username},guest_telegram.eq.${username}`)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (!orders || orders.length === 0) {
+    await editMessage(botToken, chatId, messageId, '📋 *Order History*\n\nYou have no orders yet. Start shopping! 🛒', {
+      inline_keyboard: [
+        [{ text: '🛒 Browse Products', callback_data: 'products' }],
+        [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+      ]
+    });
+    return;
+  }
+
+  let text = '📋 *Your Recent Orders*\n\n';
+  for (const order of orders) {
+    const statusEmoji = order.status === 'completed' ? '✅' : order.status === 'paid' ? '💳' : order.status === 'cancelled' ? '❌' : '⏳';
+    const items = (order.order_items as any[])?.map((i: any) => i.product_name).join(', ') || 'Unknown';
+    const date = new Date(order.created_at);
+    text += `${statusEmoji} \`${order.id.slice(0, 8)}\` • $${order.total_amount.toFixed(2)}\n`;
+    text += `   ${items}\n`;
+    text += `   ${date.toLocaleDateString()}\n\n`;
+  }
+
+  await editMessage(botToken, chatId, messageId, text, {
+    inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
+  });
+}
+
+async function showAccount(botToken: string, chatId: number, messageId: number, username: string) {
+  const text = `👤 *Your Account*\n\n📱 Telegram: @${username}\n🆔 Chat ID: \`${chatId}\`\n\nYour orders are linked to your Telegram username. Contact us if you need help!`;
+  await editMessage(botToken, chatId, messageId, text, {
+    inline_keyboard: [
+      [{ text: '📋 Order History', callback_data: 'history' }],
+      [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+    ]
+  });
+}
+
+async function showFAQ(botToken: string, chatId: number, messageId: number) {
+  const text = `❓ *Frequently Asked Questions*\n\n` +
+    `*Q: How long is delivery?*\nA: Usually within 1-3 hours after payment verification.\n\n` +
+    `*Q: How do I pay?*\nA: We use KHQR (Bakong). Scan the QR code and send us a screenshot.\n\n` +
+    `*Q: Is there a warranty?*\nA: Yes! All products come with a warranty for the full duration.\n\n` +
+    `*Q: What if my account doesn't work?*\nA: Contact us immediately and we'll replace it for free.\n\n` +
+    `*Q: Can I get a refund?*\nA: We offer replacements, not refunds. Contact support for help.`;
+
+  await editMessage(botToken, chatId, messageId, text, {
+    inline_keyboard: [
+      [{ text: '📞 Contact Support', callback_data: 'contact' }],
+      [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+    ]
+  });
+}
+
+async function showContact(botToken: string, chatId: number, messageId: number) {
+  const text = `📞 *Contact Us*\n\n` +
+    `📱 Telegram: @tephh\n` +
+    `📸 Instagram: @putephh\n` +
+    `🌐 Website: tephhshop.lovable.app\n\n` +
+    `💬 Feel free to message us anytime! We usually respond within minutes.`;
+
+  await editMessage(botToken, chatId, messageId, text, {
+    inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
+  });
+}
+
+// ═══════════════════════════════════════════════
 // ─── ADMIN FUNCTIONS ───
+// ═══════════════════════════════════════════════
 
 async function handleCheckCommand(supabase: any, botToken: string, chatId: number) {
   const { data: pendingOrders, error } = await supabase
     .from('orders')
-    .select(`
-      id, created_at, guest_name, guest_telegram, guest_email, guest_phone, guest_notes, total_amount, status,
-      order_items (product_name, quantity, unit_price)
-    `)
+    .select(`id, created_at, guest_name, guest_telegram, guest_email, guest_phone, guest_notes, total_amount, status, order_items (product_name, quantity, unit_price)`)
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
     .limit(10);
 
   if (error) {
-    console.error('Error fetching orders:', error);
     await sendMessage(botToken, chatId, '❌ Failed to fetch orders.');
     return;
   }
-
   if (!pendingOrders || pendingOrders.length === 0) {
-    await sendMessage(botToken, chatId, '✅ No pending orders! All orders are verified.');
+    await sendMessage(botToken, chatId, '✅ No pending orders! All clear.');
     return;
   }
 
@@ -383,39 +520,18 @@ async function handleCheckCommand(supabase: any, botToken: string, chatId: numbe
       `  • ${item.product_name} x${item.quantity} - $${(item.unit_price * item.quantity).toFixed(2)}`
     ).join('\n') || '  No items';
 
-    const telegramHandle = order.guest_telegram?.startsWith('@')
-      ? order.guest_telegram
-      : `@${order.guest_telegram}`;
+    const telegramHandle = order.guest_telegram?.startsWith('@') ? order.guest_telegram : `@${order.guest_telegram}`;
+    const timeAgo = getTimeAgo(new Date(order.created_at));
 
-    const createdAt = new Date(order.created_at);
-    const timeAgo = getTimeAgo(createdAt);
+    const message = `📋 *Pending Order*\n\n🆔 \`${order.id.slice(0, 8)}\`\n👤 ${order.guest_name || 'Guest'}\n📱 ${telegramHandle}${order.guest_email ? `\n📧 ${order.guest_email}` : ''}${order.guest_phone ? `\n📞 ${order.guest_phone}` : ''}\n💵 *$${order.total_amount.toFixed(2)}*\n⏰ ${timeAgo}\n\n🛍️ Items:\n${items}${order.guest_notes ? `\n\n📝 Notes: ${order.guest_notes}` : ''}`;
 
-    const message = `📋 *Pending Order*
-
-🆔 \`${order.id.slice(0, 8)}\`
-👤 ${order.guest_name || 'Guest'}
-📱 ${telegramHandle}${order.guest_email ? `\n📧 ${order.guest_email}` : ''}${order.guest_phone ? `\n📞 ${order.guest_phone}` : ''}
-💵 *$${order.total_amount.toFixed(2)}*
-⏰ ${timeAgo}
-
-🛍️ Items:
-${items}${order.guest_notes ? `\n\n📝 Notes: ${order.guest_notes}` : ''}`;
-
-    const keyboard = {
+    await sendMessageWithKeyboard(botToken, chatId, message, {
       inline_keyboard: [
-        [
-          { text: '✅ Confirm Paid', callback_data: `confirm_${order.id}` },
-          { text: '❌ Reject', callback_data: `reject_${order.id}` }
-        ],
-        [
-          { text: '🔍 Check Bank', callback_data: `check_${order.id}` }
-        ]
+        [{ text: '✅ Confirm Paid', callback_data: `confirm_${order.id}` }, { text: '❌ Reject', callback_data: `reject_${order.id}` }],
+        [{ text: '🔍 Check Bank', callback_data: `check_${order.id}` }]
       ]
-    };
-
-    await sendMessageWithKeyboard(botToken, chatId, message, keyboard);
+    });
   }
-
   await sendMessage(botToken, chatId, `📊 Total pending: *${pendingOrders.length}* order(s)`);
 }
 
@@ -424,103 +540,98 @@ async function handleOrderAction(supabase: any, botToken: string, callbackQuery:
   const action = callbackData.substring(0, underscoreIndex);
   const orderId = callbackData.substring(underscoreIndex + 1);
 
-  if (!orderId) {
-    await answerCallback(botToken, callbackQuery.id, '❌ Invalid order');
-    return;
-  }
+  if (!orderId) { await answerCallback(botToken, callbackQuery.id, '❌ Invalid order'); return; }
 
-  let responseText = '';
   let newStatus = '';
-
-  if (action === 'confirm') {
-    newStatus = 'paid';
-    responseText = '✅ Order confirmed as paid!';
-  } else if (action === 'reject') {
-    newStatus = 'cancelled';
-    responseText = '❌ Order rejected!';
-  }
+  if (action === 'confirm') newStatus = 'paid';
+  else if (action === 'reject') newStatus = 'cancelled';
 
   if (newStatus) {
-    const updateData: { status: string; payment_verified_at?: string } = { status: newStatus };
-    if (newStatus === 'paid') {
-      updateData.payment_verified_at = new Date().toISOString();
-    }
+    const updateData: any = { status: newStatus };
+    if (newStatus === 'paid') updateData.payment_verified_at = new Date().toISOString();
 
-    const { error } = await supabase
-      .from('orders')
-      .update(updateData)
-      .eq('id', orderId);
-
+    const { error } = await supabase.from('orders').update(updateData).eq('id', orderId);
     if (error) {
-      console.error('Failed to update order:', error);
       await answerCallback(botToken, callbackQuery.id, '❌ Failed to update order');
       return;
     }
 
-    await answerCallback(botToken, callbackQuery.id, responseText);
-
     const statusEmoji = newStatus === 'paid' ? '✅' : '❌';
     const statusText = newStatus === 'paid' ? 'CONFIRMED' : 'REJECTED';
-    
+
     await fetch(`https://api.telegram.org/bot${botToken}/editMessageReplyMarkup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
         message_id: messageId,
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: `${statusEmoji} ${statusText}`, callback_data: 'processed' }]
-          ]
-        }
+        reply_markup: { inline_keyboard: [[{ text: `${statusEmoji} ${statusText}`, callback_data: 'processed' }]] }
       })
     });
   }
 }
 
 async function handleCheckBank(supabase: any, botToken: string, callbackQuery: any, orderId: string, chatId: number, messageId: number) {
-  const { data: order } = await supabase
-    .from('orders')
-    .select('payment_md5')
-    .eq('id', orderId)
-    .single();
+  const { data: order } = await supabase.from('orders').select('payment_md5').eq('id', orderId).single();
 
   if (order?.payment_md5) {
-    const checkResult = await supabase.functions.invoke('check-payment', {
-      body: { orderId, md5Hash: order.payment_md5 }
-    });
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     
-    if (checkResult.data?.verified || checkResult.data?.status === 'paid') {
-      await answerCallback(botToken, callbackQuery.id, '✅ Payment verified in Bakong!');
-      
-      // Auto-confirm
-      await supabase.from('orders').update({ 
-        status: 'paid', 
-        payment_verified_at: new Date().toISOString() 
-      }).eq('id', orderId);
-
-      await fetch(`https://api.telegram.org/bot${botToken}/editMessageReplyMarkup`, {
+    try {
+      const checkRes = await fetch(`${supabaseUrl}/functions/v1/check-payment`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          message_id: messageId,
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '✅ CONFIRMED (Bank Verified)', callback_data: 'processed' }]
-            ]
-          }
-        })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        body: JSON.stringify({ orderId, md5Hash: order.payment_md5 }),
       });
-    } else {
-      await answerCallback(botToken, callbackQuery.id, '⏳ Payment not found in Bakong yet');
+      
+      const checkData = await checkRes.json();
+      
+      if (checkData?.verified || checkData?.status === 'paid') {
+        await answerCallback(botToken, callbackQuery.id, '✅ Payment verified in Bakong!');
+        await supabase.from('orders').update({ status: 'paid', payment_verified_at: new Date().toISOString() }).eq('id', orderId);
+        await fetch(`https://api.telegram.org/bot${botToken}/editMessageReplyMarkup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: { inline_keyboard: [[{ text: '✅ CONFIRMED (Bank Verified)', callback_data: 'processed' }]] }
+          })
+        });
+      } else {
+        await answerCallback(botToken, callbackQuery.id, '⏳ Payment not found in Bakong yet');
+      }
+    } catch (e) {
+      console.error('Check bank error:', e);
+      await answerCallback(botToken, callbackQuery.id, '❌ Error checking bank');
     }
   } else {
     await answerCallback(botToken, callbackQuery.id, '❌ No payment hash found');
   }
 }
 
+// ═══════════════════════════════════════════════
 // ─── HELPERS ───
+// ═══════════════════════════════════════════════
+
+function getAppName(app: string): string {
+  const names: Record<string, string> = {
+    spotify: 'Spotify', youtube: 'YouTube', capcut: 'CapCut',
+    alight: 'Alight Motion', discord: 'Discord', netflix: 'Netflix',
+    chatgpt: 'ChatGPT Plus', gemini: 'Gemini AI',
+  };
+  return names[app] || app.charAt(0).toUpperCase() + app.slice(1);
+}
+
+function getAppEmoji(app: string): string {
+  const emojis: Record<string, string> = {
+    spotify: '🎵', youtube: '📺', capcut: '🎬',
+    alight: '✨', discord: '💬', netflix: '🎬',
+    chatgpt: '🤖', gemini: '✨',
+  };
+  return emojis[app] || '📱';
+}
 
 function okResponse() {
   return new Response(JSON.stringify({ success: true }), {
@@ -536,19 +647,14 @@ function getTimeAgo(date: Date): string {
   if (diffMins < 60) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+  return `${Math.floor(diffHours / 24)}d ago`;
 }
 
 async function answerCallback(botToken: string, callbackId: string, text: string) {
   await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      callback_query_id: callbackId,
-      text: text,
-      show_alert: text.length > 0
-    })
+    body: JSON.stringify({ callback_query_id: callbackId, text, show_alert: text.length > 0 })
   });
 }
 
@@ -556,21 +662,26 @@ async function sendMessage(botToken: string, chatId: number, text: string) {
   await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: text,
-      parse_mode: 'Markdown'
-    })
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' })
   });
 }
 
-async function sendMessageWithKeyboard(botToken: string, chatId: number, text: string, keyboard: any) {
+async function sendMessageWithKeyboard(botToken: string, chatId: number | string, text: string, keyboard: any) {
   await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', reply_markup: keyboard })
+  });
+}
+
+async function editMessage(botToken: string, chatId: number, messageId: number, text: string, keyboard: any) {
+  await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       chat_id: chatId,
-      text: text,
+      message_id: messageId,
+      text,
       parse_mode: 'Markdown',
       reply_markup: keyboard
     })

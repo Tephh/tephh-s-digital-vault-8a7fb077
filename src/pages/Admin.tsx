@@ -717,24 +717,18 @@ const Admin: React.FC = () => {
                     </div>
                     <div className="space-y-2">
                       <Label>App</Label>
-                      <Select
-                        value={productForm.app}
-                        onValueChange={(value) => setProductForm(prev => ({ ...prev, app: value }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="spotify">Spotify</SelectItem>
-                          <SelectItem value="youtube">YouTube</SelectItem>
-                          <SelectItem value="capcut">CapCut</SelectItem>
-                          <SelectItem value="alight">Alight Motion</SelectItem>
-                          <SelectItem value="discord">Discord</SelectItem>
-                          <SelectItem value="netflix">Netflix</SelectItem>
-                          <SelectItem value="chatgpt">ChatGPT Plus</SelectItem>
-                          <SelectItem value="gemini">Gemini AI</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Input
+                        value={productForm.app || ''}
+                        onChange={(e) => setProductForm(prev => ({ ...prev, app: e.target.value.toLowerCase().replace(/\s+/g, '-') }))}
+                        placeholder="e.g. spotify, netflix, canva"
+                        list="app-suggestions"
+                      />
+                      <datalist id="app-suggestions">
+                        {[...new Set(products.map(p => p.app))].map(app => (
+                          <option key={app} value={app} />
+                        ))}
+                      </datalist>
+                      <p className="text-xs text-muted-foreground mt-1">Type any app name (lowercase, no spaces). Existing: {[...new Set(products.map(p => p.app))].join(', ')}</p>
                     </div>
                   </div>
 
