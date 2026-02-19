@@ -47,11 +47,6 @@ serve(async (req) => {
         await handleCheckCommand(supabase, botToken, chatId);
         return okResponse();
       }
-      // If user sends text while we expect info (telegram username for order)
-      // Check if there's a pending order state
-      const stateKey = `order_state_${chatId}`;
-      // We use a simple approach: check if the text looks like a telegram handle
-      // This is handled by callback flow instead
     }
 
     // ─── PHOTO (payment screenshot) ───
@@ -61,14 +56,40 @@ serve(async (req) => {
       if (adminChatId) {
         const photo = update.message.photo[update.message.photo.length - 1];
         const caption = update.message.caption || '';
+
+        // Find the most recent pending order for this user
+        const { data: recentOrder } = await supabase
+          .from('orders')
+          .select('id, total_amount, order_items(product_name)')
+          .or(`guest_telegram.eq.@${username},guest_telegram.eq.${username}`)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        let orderInfo = '';
+        let replyMarkup: any = undefined;
+        if (recentOrder) {
+          const items = (recentOrder.order_items as any[])?.map((i: any) => i.product_name).join(', ') || 'Unknown';
+          orderInfo = `\n\n📋 Order: \`${recentOrder.id.slice(0, 8)}\`\n🛍️ ${items}\n💵 $${recentOrder.total_amount.toFixed(2)}`;
+          replyMarkup = {
+            inline_keyboard: [
+              [{ text: '✅ Confirm Paid', callback_data: `confirm_${recentOrder.id}` }, { text: '❌ Reject', callback_data: `reject_${recentOrder.id}` }],
+              [{ text: '💬 Contact Buyer', url: `https://t.me/${username}` }],
+              [{ text: '🔍 Check Bank', callback_data: `check_${recentOrder.id}` }]
+            ]
+          };
+        }
+
         await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: adminChatId,
             photo: photo.file_id,
-            caption: `💳 *Payment Screenshot*\n👤 From: @${username}\n${caption ? `📝 Note: ${caption}` : ''}\n\nUse /check to manage pending orders.`,
-            parse_mode: 'Markdown'
+            caption: `💳 *Payment Screenshot*\n👤 From: @${username}${orderInfo}${caption ? `\n📝 Note: ${caption}` : ''}`,
+            parse_mode: 'Markdown',
+            ...(replyMarkup ? { reply_markup: replyMarkup } : {})
           })
         });
         await sendMessage(botToken, chatId, '✅ Your payment screenshot has been sent to admin!\n\n⏳ Please wait for verification. You\'ll be notified once confirmed.\n\n📦 Delivery: within 1-3 hours after verification.');
@@ -93,9 +114,10 @@ serve(async (req) => {
         return okResponse();
       }
 
-      // ── Products (show all grouped) ──
-      if (data === 'products') {
-        await showAllProducts(supabase, botToken, chatId, messageId);
+      // ── Products (show categories with pagination) ──
+      if (data === 'products' || data.startsWith('products_page_')) {
+        const page = data.startsWith('products_page_') ? parseInt(data.split('_')[2]) : 0;
+        await showAllProducts(supabase, botToken, chatId, messageId, page);
         return okResponse();
       }
 
@@ -202,10 +224,10 @@ async function editMainMenu(botToken: string, chatId: number, messageId: number)
 }
 
 // ═══════════════════════════════════════════════
-// ─── PRODUCTS ───
+// ─── PRODUCTS (with pagination: 5 per page) ───
 // ═══════════════════════════════════════════════
 
-async function showAllProducts(supabase: any, botToken: string, chatId: number, messageId: number) {
+async function showAllProducts(supabase: any, botToken: string, chatId: number, messageId: number, page: number = 0) {
   const { data: products } = await supabase
     .from('products')
     .select('app')
@@ -222,10 +244,30 @@ async function showAllProducts(supabase: any, botToken: string, chatId: number, 
   const appCounts: Record<string, number> = {};
   products.forEach((p: any) => { appCounts[p.app] = (appCounts[p.app] || 0) + 1; });
 
-  const buttons = uniqueApps.map(app => [{
+  const ITEMS_PER_PAGE = 5;
+  const totalPages = Math.ceil(uniqueApps.length / ITEMS_PER_PAGE);
+  const currentPage = Math.min(page, totalPages - 1);
+  const startIdx = currentPage * ITEMS_PER_PAGE;
+  const pageApps = uniqueApps.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+
+  const buttons: any[][] = pageApps.map(app => [{
     text: `${getAppEmoji(app)} ${getAppName(app)} (${appCounts[app]})`,
     callback_data: `app_${app}`
   }]);
+
+  // Pagination buttons
+  if (totalPages > 1) {
+    const navRow: any[] = [];
+    if (currentPage > 0) {
+      navRow.push({ text: '⬅️ Previous', callback_data: `products_page_${currentPage - 1}` });
+    }
+    navRow.push({ text: `${currentPage + 1}/${totalPages}`, callback_data: 'products' });
+    if (currentPage < totalPages - 1) {
+      navRow.push({ text: 'Next ➡️', callback_data: `products_page_${currentPage + 1}` });
+    }
+    buttons.push(navRow);
+  }
+
   buttons.push([{ text: '🏠 Main Menu', callback_data: 'main_menu' }]);
 
   await editMessage(botToken, chatId, messageId, '📦 *Product Categories*\n\nSelect an app to browse products:', {
@@ -253,9 +295,10 @@ async function showAppProducts(supabase: any, botToken: string, chatId: number, 
   for (const p of products) {
     const priceStr = `$${Number(p.price).toFixed(2)}`;
     const durationStr = p.duration ? ` • ${p.duration}` : '';
-    text += `• ${p.name}${durationStr} — *${priceStr}*\n`;
+    const categoryLabel = getCategoryLabel(p.category);
+    text += `• ${getAppName(app)} ${categoryLabel}${durationStr} — *${priceStr}*\n`;
     buttons.push([{
-      text: `${p.name} - ${priceStr}`,
+      text: `${getAppName(app)} ${categoryLabel}${p.duration ? ` - ${p.duration}` : ''} - ${priceStr}`,
       callback_data: `product_${p.id}`
     }]);
   }
@@ -282,10 +325,11 @@ async function showProductDetail(supabase: any, botToken: string, chatId: number
 
   const priceStr = `$${Number(product.price).toFixed(2)}`;
   const originalStr = product.original_price ? ` ~$${Number(product.original_price).toFixed(2)}~` : '';
+  const categoryLabel = getCategoryLabel(product.category);
 
-  let text = `🏷️ *${product.name}*\n\n`;
+  let text = `🏷️ *${getAppName(product.app)} ${categoryLabel}*\n\n`;
   text += `${getAppEmoji(product.app)} App: ${getAppName(product.app)}\n`;
-  text += `📂 Type: ${product.category}\n`;
+  text += `📂 Type: ${categoryLabel}\n`;
   if (product.duration) text += `⏰ Duration: ${product.duration}\n`;
   text += `\n💰 Price: *${priceStr}*${originalStr}\n`;
   if (product.description) text += `\n📝 ${product.description}\n`;
@@ -319,19 +363,19 @@ async function handleBuyProduct(supabase: any, botToken: string, chatId: number,
     return;
   }
 
-  // Update the current message to show "Creating order..."
   await editMessage(botToken, chatId, messageId, '⏳ Creating your order...', { inline_keyboard: [] });
 
-  // Create order
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const categoryLabel = getCategoryLabel(product.category);
+  const productDisplayName = `${getAppName(product.app)} ${categoryLabel}${product.duration ? ` - ${product.duration}` : ''}`;
 
   const orderPayload = {
     guest_name: username,
     guest_telegram: `@${username}`,
     items: [{
       product_id: product.id,
-      product_name: product.name,
+      product_name: productDisplayName,
       product_app: product.app,
       product_category: product.category,
       product_duration: product.duration,
@@ -369,50 +413,52 @@ async function handleBuyProduct(supabase: any, botToken: string, chatId: number,
   }
 
   const order = orderData.order;
-  const qrData = orderData.qr;
   const priceStr = `$${Number(product.price).toFixed(2)}`;
 
-  // Update the message to show order info
+  // Send order confirmation message
   let orderMsg = `✅ *Order Created!*\n\n`;
   orderMsg += `🆔 Order: \`${order.id.slice(0, 8)}\`\n`;
-  orderMsg += `🛍️ ${product.name}\n`;
+  orderMsg += `🛍️ ${productDisplayName}\n`;
   orderMsg += `💰 Total: *${priceStr}*\n\n`;
+  orderMsg += `📱 Scan the QR below to pay via Bakong/KHQR\n\n`;
+  orderMsg += `💡 After payment, send a *screenshot* of your payment to this chat.\n`;
+  orderMsg += `⏰ Delivery: 1-3 hours after verification.`;
 
-  if (qrData?.qrString) {
-    // Edit current message to show order details
-    await editMessage(botToken, chatId, messageId, orderMsg + '📱 Generating QR code...', { inline_keyboard: [] });
+  await editMessage(botToken, chatId, messageId, orderMsg, { inline_keyboard: [] });
 
-    // Send the static KHQR payment image
-    const qrImageUrl = 'https://files.catbox.moe/6dp2df.jpg';
+  // Send the static KHQR payment image
+  const qrImageUrl = 'https://files.catbox.moe/6dp2df.jpg';
 
-    await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        photo: qrImageUrl,
-        caption: `📱 *Scan this QR to pay via Bakong/KHQR*\n\n💵 Amount: *${priceStr}*\n\n💡 After payment, send a *screenshot* of your payment to this chat.\n\n⏰ Delivery: 1-3 hours after verification.`,
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🏠 Back to Main Menu', callback_data: 'main_menu' }]
-          ]
-        }
-      })
-    });
-  } else {
-    orderMsg += `Please contact admin for payment details.\n💡 After payment, send a *screenshot* of your payment to this chat.`;
-    await editMessage(botToken, chatId, messageId, orderMsg, {
-      inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
-    });
+  const photoRes = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      photo: qrImageUrl,
+      caption: `💵 *Pay: ${priceStr}*\n📋 Order: \`${order.id.slice(0, 8)}\`\n\n📸 Send a screenshot of your payment after scanning.`,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🏠 Back to Main Menu', callback_data: 'main_menu' }]
+        ]
+      }
+    })
+  });
+
+  const photoResult = await photoRes.json();
+  if (!photoResult.ok) {
+    console.error('Failed to send QR photo:', photoResult);
+    // Fallback: send as text with link
+    await sendMessage(botToken, chatId, `📱 *Scan QR to pay:*\n${qrImageUrl}\n\n💵 Amount: *${priceStr}*\n\n📸 Send a screenshot after payment.`);
   }
 
-  // Notify admin
+  // Notify admin with contact buyer button
   if (adminChatId) {
-    const adminMsg = `🛒 *New Order from Telegram Bot!*\n\n🆔 \`${order.id.slice(0, 8)}\`\n👤 @${username}\n🛍️ ${product.name}\n💰 *${priceStr}*\n\nWaiting for payment screenshot...`;
+    const adminMsg = `🛒 *New Order from Telegram Bot!*\n\n🆔 \`${order.id.slice(0, 8)}\`\n👤 @${username}\n🛍️ ${productDisplayName}\n💰 *${priceStr}*\n\nWaiting for payment screenshot...`;
     await sendMessageWithKeyboard(botToken, parseInt(adminChatId), adminMsg, {
       inline_keyboard: [
         [{ text: '✅ Confirm Paid', callback_data: `confirm_${order.id}` }, { text: '❌ Reject', callback_data: `reject_${order.id}` }],
+        [{ text: '💬 Contact Buyer', url: `https://t.me/${username}` }],
         [{ text: '🔍 Check Bank', callback_data: `check_${order.id}` }]
       ]
     });
@@ -476,7 +522,7 @@ async function showFAQ(botToken: string, chatId: number, messageId: number) {
 
   await editMessage(botToken, chatId, messageId, text, {
     inline_keyboard: [
-      [{ text: '📞 Contact Support', callback_data: 'contact' }],
+      [{ text: '📞 Contact Support', url: 'https://t.me/tephh' }],
       [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
     ]
   });
@@ -486,11 +532,15 @@ async function showContact(botToken: string, chatId: number, messageId: number) 
   const text = `📞 *Contact Us*\n\n` +
     `📱 Telegram: @tephh\n` +
     `📸 Instagram: @putephh\n` +
-    `🌐 Website: tephhshop.lovable.app\n\n` +
+    `🌐 Website: tephh.xyz\n\n` +
     `💬 Feel free to message us anytime! We usually respond within minutes.`;
 
   await editMessage(botToken, chatId, messageId, text, {
-    inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'main_menu' }]]
+    inline_keyboard: [
+      [{ text: '💬 Message Us', url: 'https://t.me/tephh' }],
+      [{ text: '🌐 Visit Website', url: 'https://tephh.xyz' }],
+      [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+    ]
   });
 }
 
@@ -521,6 +571,7 @@ async function handleCheckCommand(supabase: any, botToken: string, chatId: numbe
     ).join('\n') || '  No items';
 
     const telegramHandle = order.guest_telegram?.startsWith('@') ? order.guest_telegram : `@${order.guest_telegram}`;
+    const cleanUsername = order.guest_telegram?.replace('@', '') || '';
     const timeAgo = getTimeAgo(new Date(order.created_at));
 
     const message = `📋 *Pending Order*\n\n🆔 \`${order.id.slice(0, 8)}\`\n👤 ${order.guest_name || 'Guest'}\n📱 ${telegramHandle}${order.guest_email ? `\n📧 ${order.guest_email}` : ''}${order.guest_phone ? `\n📞 ${order.guest_phone}` : ''}\n💵 *$${order.total_amount.toFixed(2)}*\n⏰ ${timeAgo}\n\n🛍️ Items:\n${items}${order.guest_notes ? `\n\n📝 Notes: ${order.guest_notes}` : ''}`;
@@ -528,6 +579,7 @@ async function handleCheckCommand(supabase: any, botToken: string, chatId: numbe
     await sendMessageWithKeyboard(botToken, chatId, message, {
       inline_keyboard: [
         [{ text: '✅ Confirm Paid', callback_data: `confirm_${order.id}` }, { text: '❌ Reject', callback_data: `reject_${order.id}` }],
+        [{ text: '💬 Contact Buyer', url: `https://t.me/${cleanUsername}` }],
         [{ text: '🔍 Check Bank', callback_data: `check_${order.id}` }]
       ]
     });
@@ -556,6 +608,10 @@ async function handleOrderAction(supabase: any, botToken: string, callbackQuery:
       return;
     }
 
+    // Get order info for contact button
+    const { data: order } = await supabase.from('orders').select('guest_telegram').eq('id', orderId).single();
+    const cleanUsername = order?.guest_telegram?.replace('@', '') || '';
+
     const statusEmoji = newStatus === 'paid' ? '✅' : '❌';
     const statusText = newStatus === 'paid' ? 'CONFIRMED' : 'REJECTED';
 
@@ -565,14 +621,19 @@ async function handleOrderAction(supabase: any, botToken: string, callbackQuery:
       body: JSON.stringify({
         chat_id: chatId,
         message_id: messageId,
-        reply_markup: { inline_keyboard: [[{ text: `${statusEmoji} ${statusText}`, callback_data: 'processed' }]] }
+        reply_markup: { 
+          inline_keyboard: [
+            [{ text: `${statusEmoji} ${statusText}`, callback_data: 'processed' }],
+            ...(cleanUsername ? [[{ text: '💬 Contact Buyer', url: `https://t.me/${cleanUsername}` }]] : [])
+          ] 
+        }
       })
     });
   }
 }
 
 async function handleCheckBank(supabase: any, botToken: string, callbackQuery: any, orderId: string, chatId: number, messageId: number) {
-  const { data: order } = await supabase.from('orders').select('payment_md5').eq('id', orderId).single();
+  const { data: order } = await supabase.from('orders').select('payment_md5, guest_telegram').eq('id', orderId).single();
 
   if (order?.payment_md5) {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -586,6 +647,7 @@ async function handleCheckBank(supabase: any, botToken: string, callbackQuery: a
       });
       
       const checkData = await checkRes.json();
+      const cleanUsername = order?.guest_telegram?.replace('@', '') || '';
       
       if (checkData?.verified || checkData?.status === 'paid') {
         await answerCallback(botToken, callbackQuery.id, '✅ Payment verified in Bakong!');
@@ -596,7 +658,12 @@ async function handleCheckBank(supabase: any, botToken: string, callbackQuery: a
           body: JSON.stringify({
             chat_id: chatId,
             message_id: messageId,
-            reply_markup: { inline_keyboard: [[{ text: '✅ CONFIRMED (Bank Verified)', callback_data: 'processed' }]] }
+            reply_markup: { 
+              inline_keyboard: [
+                [{ text: '✅ CONFIRMED (Bank Verified)', callback_data: 'processed' }],
+                ...(cleanUsername ? [[{ text: '💬 Contact Buyer', url: `https://t.me/${cleanUsername}` }]] : [])
+              ] 
+            }
           })
         });
       } else {
@@ -631,6 +698,15 @@ function getAppEmoji(app: string): string {
     chatgpt: '🤖', gemini: '✨',
   };
   return emojis[app] || '📱';
+}
+
+function getCategoryLabel(category: string): string {
+  const labels: Record<string, string> = {
+    account: 'Account',
+    topup: 'Top Up',
+    code: 'Code',
+  };
+  return labels[category] || category.charAt(0).toUpperCase() + category.slice(1);
 }
 
 function okResponse() {

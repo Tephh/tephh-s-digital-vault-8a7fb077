@@ -323,6 +323,17 @@ const Checkout: React.FC = () => {
                 <h2 className="text-2xl font-bold mb-6">Checkout Information</h2>
                 
                 <form onSubmit={handleSubmitInfo} className="space-y-6">
+                  {/* Delivery Info Explanation */}
+                  <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                    <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                      <MessageCircle className="w-4 h-4 text-primary" />
+                      Delivery Information
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      We deliver your account/subscription via <strong>Telegram</strong>. Please fill in your details carefully so we can reach you. Your Telegram username is required — this is where we'll send your product after payment is confirmed.
+                    </p>
+                  </div>
+
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="name">Full Name</Label>
@@ -333,6 +344,7 @@ const Checkout: React.FC = () => {
                         onChange={handleChange}
                         placeholder="Your name"
                       />
+                      <p className="text-xs text-muted-foreground">So we know who we're delivering to</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="telegram">Telegram Username *</Label>
@@ -344,6 +356,7 @@ const Checkout: React.FC = () => {
                         placeholder="@yourusername"
                         required
                       />
+                      <p className="text-xs text-muted-foreground">Required — we'll send your product here</p>
                     </div>
                   </div>
 
@@ -358,6 +371,7 @@ const Checkout: React.FC = () => {
                         onChange={handleChange}
                         placeholder="your@email.com"
                       />
+                      <p className="text-xs text-muted-foreground">For order receipt & updates</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Phone Number (Optional)</Label>
@@ -369,6 +383,7 @@ const Checkout: React.FC = () => {
                         onChange={handleChange}
                         placeholder="855 12 345 678"
                       />
+                      <p className="text-xs text-muted-foreground">Backup contact if Telegram is unreachable</p>
                     </div>
                   </div>
 
