@@ -42,7 +42,9 @@ import {
   Upload,
   Eye,
   EyeOff,
-  Copy
+  Copy,
+  Menu,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -97,6 +99,7 @@ const Admin: React.FC = () => {
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isVerifyingPayment, setIsVerifyingPayment] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Settings state
   const [settings, setSettings] = useState({
@@ -125,7 +128,6 @@ const Admin: React.FC = () => {
   });
 
   useEffect(() => {
-    // Only redirect after auth state is fully loaded
     if (!loading) {
       if (!user) {
         navigate('/login');
@@ -145,7 +147,6 @@ const Admin: React.FC = () => {
   const fetchData = async () => {
     setIsLoadingData(true);
     try {
-      // Fetch products
       const { data: productsData } = await supabase
         .from('products')
         .select('*')
@@ -153,7 +154,6 @@ const Admin: React.FC = () => {
       
       setProducts(productsData || []);
 
-      // Fetch orders
       const { data: ordersData } = await supabase
         .from('orders')
         .select(`
@@ -169,7 +169,6 @@ const Admin: React.FC = () => {
       
       setOrders(ordersData || []);
 
-      // Fetch settings
       const { data: settingsData } = await supabase
         .from('settings')
         .select('*');
@@ -208,7 +207,6 @@ const Admin: React.FC = () => {
           .from('products')
           .update(productForm)
           .eq('id', editingProduct.id);
-        
         if (error) throw error;
         toast.success('Product updated!');
       } else {
@@ -226,14 +224,10 @@ const Admin: React.FC = () => {
           is_active: productForm.is_active,
           image_url: productForm.image_url,
         };
-        const { error } = await supabase
-          .from('products')
-          .insert(newProduct);
-        
+        const { error } = await supabase.from('products').insert(newProduct);
         if (error) throw error;
         toast.success('Product created!');
       }
-      
       setIsProductDialogOpen(false);
       setEditingProduct(null);
       resetProductForm();
@@ -247,13 +241,8 @@ const Admin: React.FC = () => {
 
   const handleDeleteProduct = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
-    
     try {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', id);
-      
+      const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
       toast.success('Product deleted!');
       fetchData();
@@ -268,7 +257,6 @@ const Admin: React.FC = () => {
         .from('products')
         .update({ is_active: !product.is_active })
         .eq('id', product.id);
-      
       if (error) throw error;
       toast.success(product.is_active ? 'Product hidden!' : 'Product visible!');
       fetchData();
@@ -280,10 +268,7 @@ const Admin: React.FC = () => {
   const handleDuplicateProduct = async (product: Product) => {
     try {
       const { id, ...rest } = product;
-      const { error } = await supabase
-        .from('products')
-        .insert({ ...rest, name: `${product.name} (Copy)` });
-      
+      const { error } = await supabase.from('products').insert({ ...rest, name: `${product.name} (Copy)` });
       if (error) throw error;
       toast.success('Product duplicated!');
       fetchData();
@@ -294,22 +279,10 @@ const Admin: React.FC = () => {
 
   const handleDeleteOrder = async (orderId: string) => {
     if (!confirm('Are you sure you want to delete this order? This cannot be undone.')) return;
-    
     try {
-      // Delete order items first
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .delete()
-        .eq('order_id', orderId);
-      
+      const { error: itemsError } = await supabase.from('order_items').delete().eq('order_id', orderId);
       if (itemsError) throw itemsError;
-
-      // Then delete the order
-      const { error } = await supabase
-        .from('orders')
-        .delete()
-        .eq('id', orderId);
-      
+      const { error } = await supabase.from('orders').delete().eq('id', orderId);
       if (error) throw error;
       toast.success('Order deleted!');
       fetchData();
@@ -321,19 +294,12 @@ const Admin: React.FC = () => {
   const handleUpdateOrderStatus = async (orderId: string, status: string) => {
     try {
       const updateData: { status: string; payment_verified_at?: string } = { status };
-      
       if (status === 'paid' || status === 'completed') {
         updateData.payment_verified_at = new Date().toISOString();
       }
-      
-      const { error } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', orderId);
-      
+      const { error } = await supabase.from('orders').update(updateData).eq('id', orderId);
       if (error) throw error;
       
-      // Send Telegram notification for status update
       const order = orders.find(o => o.id === orderId);
       if (order && settings.telegramBotToken && settings.telegramChatId) {
         await supabase.functions.invoke('telegram-notify', {
@@ -362,13 +328,10 @@ const Admin: React.FC = () => {
       const { data, error } = await supabase.functions.invoke('check-payment', {
         body: { orderId, md5Hash }
       });
-
       if (error) {
-        console.error('Verify payment error:', error);
         toast.error('Failed to verify payment with Bakong API');
         return;
       }
-
       if (data?.status === 'paid' || data?.verified) {
         toast.success('Payment verified successfully via Bakong!');
         fetchData();
@@ -393,15 +356,12 @@ const Admin: React.FC = () => {
         { key: 'telegram_chat_id', value: settings.telegramChatId },
         { key: 'shop_logo_url', value: settings.shopLogoUrl },
       ];
-
       for (const setting of settingsToSave) {
         const { error } = await supabase
           .from('settings')
           .upsert({ key: setting.key, value: setting.value }, { onConflict: 'key' });
-        
         if (error) throw error;
       }
-      
       toast.success('Settings saved!');
     } catch (error: any) {
       toast.error(error.message);
@@ -415,7 +375,6 @@ const Admin: React.FC = () => {
       toast.error('Please enter both Bot Token and Chat ID first');
       return;
     }
-
     setIsSaving(true);
     try {
       const response = await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`, {
@@ -427,7 +386,6 @@ const Admin: React.FC = () => {
           parse_mode: 'Markdown'
         })
       });
-
       const data = await response.json();
       if (data.ok) {
         toast.success('Test message sent successfully!');
@@ -443,18 +401,9 @@ const Admin: React.FC = () => {
 
   const resetProductForm = () => {
     setProductForm({
-      name: '',
-      description: '',
-      long_description: '',
-      price: 0,
-      original_price: null,
-      app: 'spotify',
-      category: 'account',
-      duration: '',
-      duration_months: null,
-      stock: 0,
-      is_active: true,
-      image_url: '',
+      name: '', description: '', long_description: '', price: 0,
+      original_price: null, app: 'spotify', category: 'account',
+      duration: '', duration_months: null, stock: 0, is_active: true, image_url: '',
     });
   };
 
@@ -485,13 +434,16 @@ const Admin: React.FC = () => {
     }
   };
 
-  // Stats
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    setIsMobileMenuOpen(false);
+  };
+
   const totalOrders = orders.length;
   const pendingOrders = orders.filter(o => o.status === 'pending').length;
   const totalRevenue = orders.filter(o => o.status === 'completed' || o.status === 'paid').reduce((sum, o) => sum + o.total_amount, 0);
   const activeProducts = products.filter(p => p.is_active).length;
 
-  // Show loading while auth is being determined
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -503,7 +455,6 @@ const Admin: React.FC = () => {
     );
   }
 
-  // Show access denied if not admin (after loading completes)
   if (!user || !isAdmin) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -515,7 +466,6 @@ const Admin: React.FC = () => {
     );
   }
 
-  // Show loading while fetching data
   if (isLoadingData) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -527,57 +477,72 @@ const Admin: React.FC = () => {
     );
   }
 
+  const navItems: { tab: Tab; icon: React.ReactNode; label: string; badge?: number }[] = [
+    { tab: 'dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
+    { tab: 'products', icon: <Package className="w-5 h-5" />, label: 'Products' },
+    { tab: 'orders', icon: <ShoppingCart className="w-5 h-5" />, label: 'Orders', badge: pendingOrders },
+    { tab: 'settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
+  ];
+
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-card border-r fixed h-full">
+    <div className="min-h-screen bg-background flex flex-col lg:flex-row">
+      {/* Mobile Header */}
+      <div className="lg:hidden flex items-center justify-between p-4 border-b bg-card sticky top-0 z-50">
+        <div>
+          <h1 className="text-lg font-bold text-gradient-primary">Admin Panel</h1>
+          <p className="text-xs text-muted-foreground">Pu-Tephh Shop</p>
+        </div>
+        <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </Button>
+      </div>
+
+      {/* Mobile Nav Overlay */}
+      {isMobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setIsMobileMenuOpen(false)}>
+          <div className="absolute top-[65px] left-0 right-0 bg-card border-b shadow-lg p-4 space-y-1" onClick={e => e.stopPropagation()}>
+            {navItems.map(item => (
+              <button
+                key={item.tab}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  activeTab === item.tab ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                }`}
+                onClick={() => handleTabChange(item.tab)}
+              >
+                {item.icon}
+                {item.label}
+                {item.badge ? <Badge className="ml-auto bg-yellow-500">{item.badge}</Badge> : null}
+              </button>
+            ))}
+            <Button variant="ghost" className="w-full justify-start mt-2" onClick={handleLogout}>
+              <LogOut className="w-5 h-5 mr-3" />
+              Logout
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:block w-64 bg-card border-r fixed h-full">
         <div className="p-6">
           <h1 className="text-xl font-bold text-gradient-primary">Admin Panel</h1>
-          <p className="text-sm text-muted-foreground">K'TEPHH Shop</p>
+          <p className="text-sm text-muted-foreground">Pu-Tephh Shop</p>
         </div>
-        
         <nav className="px-4 space-y-1">
-          <button
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              activeTab === 'dashboard' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-            }`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            Dashboard
-          </button>
-          <button
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              activeTab === 'products' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-            }`}
-            onClick={() => setActiveTab('products')}
-          >
-            <Package className="w-5 h-5" />
-            Products
-          </button>
-          <button
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              activeTab === 'orders' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-            }`}
-            onClick={() => setActiveTab('orders')}
-          >
-            <ShoppingCart className="w-5 h-5" />
-            Orders
-            {pendingOrders > 0 && (
-              <Badge className="ml-auto bg-yellow-500">{pendingOrders}</Badge>
-            )}
-          </button>
-          <button
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              activeTab === 'settings' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-            }`}
-            onClick={() => setActiveTab('settings')}
-          >
-            <Settings className="w-5 h-5" />
-            Settings
-          </button>
+          {navItems.map(item => (
+            <button
+              key={item.tab}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                activeTab === item.tab ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+              }`}
+              onClick={() => setActiveTab(item.tab)}
+            >
+              {item.icon}
+              {item.label}
+              {item.badge ? <Badge className="ml-auto bg-yellow-500">{item.badge}</Badge> : null}
+            </button>
+          ))}
         </nav>
-
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t">
           <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
             <LogOut className="w-5 h-5 mr-3" />
@@ -587,46 +552,44 @@ const Admin: React.FC = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64 p-8">
+      <main className="flex-1 lg:ml-64 p-4 md:p-8">
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-          <div className="space-y-8">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Dashboard</h2>
-              <Button variant="outline" onClick={fetchData}>
+          <div className="space-y-6 md:space-y-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <h2 className="text-xl md:text-2xl font-bold">Dashboard</h2>
+              <Button variant="outline" size="sm" onClick={fetchData}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Refresh
               </Button>
             </div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="glass-card p-6">
-                <p className="text-muted-foreground text-sm">Total Orders</p>
-                <p className="text-3xl font-bold mt-2">{totalOrders}</p>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+              <div className="glass-card p-4 md:p-6">
+                <p className="text-muted-foreground text-xs md:text-sm">Total Orders</p>
+                <p className="text-2xl md:text-3xl font-bold mt-1 md:mt-2">{totalOrders}</p>
               </div>
-              <div className="glass-card p-6">
-                <p className="text-muted-foreground text-sm">Pending Orders</p>
-                <p className="text-3xl font-bold mt-2 text-yellow-500">{pendingOrders}</p>
+              <div className="glass-card p-4 md:p-6">
+                <p className="text-muted-foreground text-xs md:text-sm">Pending</p>
+                <p className="text-2xl md:text-3xl font-bold mt-1 md:mt-2 text-yellow-500">{pendingOrders}</p>
               </div>
-              <div className="glass-card p-6">
-                <p className="text-muted-foreground text-sm">Total Revenue</p>
-                <p className="text-3xl font-bold mt-2 text-gradient-gold">${totalRevenue.toFixed(2)}</p>
+              <div className="glass-card p-4 md:p-6">
+                <p className="text-muted-foreground text-xs md:text-sm">Revenue</p>
+                <p className="text-2xl md:text-3xl font-bold mt-1 md:mt-2 text-gradient-gold">${totalRevenue.toFixed(2)}</p>
               </div>
-              <div className="glass-card p-6">
-                <p className="text-muted-foreground text-sm">Active Products</p>
-                <p className="text-3xl font-bold mt-2">{activeProducts}</p>
+              <div className="glass-card p-4 md:p-6">
+                <p className="text-muted-foreground text-xs md:text-sm">Products</p>
+                <p className="text-2xl md:text-3xl font-bold mt-1 md:mt-2">{activeProducts}</p>
               </div>
             </div>
 
-            {/* Recent Orders */}
-            <div className="glass-card p-6">
-              <h3 className="text-xl font-semibold mb-4">Recent Orders</h3>
-              <div className="space-y-4">
+            <div className="glass-card p-4 md:p-6">
+              <h3 className="text-lg md:text-xl font-semibold mb-4">Recent Orders</h3>
+              <div className="space-y-3">
                 {orders.slice(0, 5).map(order => (
-                  <div key={order.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="flex -space-x-2">
+                  <div key={order.id} className="flex items-center justify-between p-3 md:p-4 bg-muted/50 rounded-lg gap-3">
+                    <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                      <div className="hidden sm:flex -space-x-2">
                         {order.order_items?.slice(0, 2).map((item, idx) => (
                           <img 
                             key={idx}
@@ -636,13 +599,13 @@ const Admin: React.FC = () => {
                           />
                         ))}
                       </div>
-                      <div>
-                        <p className="font-mono text-sm">#{order.id.slice(0, 8)}</p>
-                        <p className="text-sm text-muted-foreground">@{order.guest_telegram}</p>
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs md:text-sm">#{order.id.slice(0, 8)}</p>
+                        <p className="text-xs md:text-sm text-muted-foreground truncate">@{order.guest_telegram?.replace('@', '')}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold">${order.total_amount.toFixed(2)}</p>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-bold text-sm md:text-base">${order.total_amount.toFixed(2)}</p>
                       {getStatusBadge(order.status)}
                     </div>
                   </div>
@@ -655,46 +618,51 @@ const Admin: React.FC = () => {
         {/* Products Tab */}
         {activeTab === 'products' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Products</h2>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <h2 className="text-xl md:text-2xl font-bold">Products</h2>
               <Button className="btn-gold" onClick={openNewProduct}>
                 <Plus className="w-4 h-4 mr-2" />
                 Add Product
               </Button>
             </div>
 
-            <div className="grid gap-4">
+            <div className="grid gap-3 md:gap-4">
               {products.map(product => (
-                <div key={product.id} className="glass-card p-4 flex items-center gap-4">
-                  <img 
-                    src={product.image_url || getAppIcon(product.app)} 
-                    alt={product.app}
-                    className="w-12 h-12 rounded-lg object-contain bg-muted/50 p-1"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold truncate">{product.name}</h3>
-                      {!product.is_active && <Badge variant="secondary">Inactive</Badge>}
+                <div key={product.id} className="glass-card p-3 md:p-4">
+                  <div className="flex items-center gap-3 md:gap-4">
+                    <img 
+                      src={product.image_url || getAppIcon(product.app)} 
+                      alt={product.app}
+                      className="w-10 h-10 md:w-12 md:h-12 rounded-lg object-contain bg-muted/50 p-1 flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold truncate text-sm md:text-base">{product.name}</h3>
+                        {!product.is_active && <Badge variant="secondary" className="text-xs">Off</Badge>}
+                      </div>
+                      <p className="text-xs md:text-sm text-muted-foreground">{product.category} • {product.duration}</p>
                     </div>
-                    <p className="text-sm text-muted-foreground">{product.category} • {product.duration}</p>
+                    <div className="text-right flex-shrink-0 hidden sm:block">
+                      <p className="font-bold">${product.price.toFixed(2)}</p>
+                      <p className="text-sm text-muted-foreground">Stock: {product.stock}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold">${product.price.toFixed(2)}</p>
-                    <p className="text-sm text-muted-foreground">Stock: {product.stock}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="icon" onClick={() => handleToggleProduct(product)} title={product.is_active ? 'Hide product' : 'Show product'}>
-                      {product.is_active ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </Button>
-                    <Button variant="outline" size="icon" onClick={() => handleDuplicateProduct(product)} title="Duplicate product">
-                      <Copy className="w-4 h-4" />
-                    </Button>
-                    <Button variant="outline" size="icon" onClick={() => openEditProduct(product)}>
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button variant="outline" size="icon" className="text-destructive" onClick={() => handleDeleteProduct(product.id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50">
+                    <p className="font-bold sm:hidden">${product.price.toFixed(2)}</p>
+                    <div className="flex gap-1.5 md:gap-2 ml-auto">
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleToggleProduct(product)} title={product.is_active ? 'Hide' : 'Show'}>
+                        {product.is_active ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </Button>
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleDuplicateProduct(product)} title="Duplicate">
+                        <Copy className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => openEditProduct(product)}>
+                        <Edit className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="outline" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteProduct(product.id)}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -702,12 +670,12 @@ const Admin: React.FC = () => {
 
             {/* Product Dialog */}
             <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
                 <DialogHeader>
                   <DialogTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Name</Label>
                       <Input
@@ -732,7 +700,7 @@ const Admin: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Category</Label>
                       <Select
@@ -759,7 +727,7 @@ const Admin: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-3 gap-3 md:gap-4">
                     <div className="space-y-2">
                       <Label>Price ($)</Label>
                       <Input
@@ -770,7 +738,7 @@ const Admin: React.FC = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Original Price ($)</Label>
+                      <Label>Original ($)</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -839,9 +807,9 @@ const Admin: React.FC = () => {
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Orders</h2>
-              <Button variant="outline" onClick={fetchData}>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <h2 className="text-xl md:text-2xl font-bold">Orders</h2>
+              <Button variant="outline" size="sm" onClick={fetchData}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Refresh
               </Button>
@@ -849,42 +817,42 @@ const Admin: React.FC = () => {
 
             <div className="space-y-4">
               {orders.map(order => (
-                <div key={order.id} className="glass-card p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <p className="font-mono text-lg">#{order.id.slice(0, 8)}</p>
-                      <p className="text-sm text-muted-foreground">
+                <div key={order.id} className="glass-card p-4 md:p-6">
+                  <div className="flex items-start justify-between mb-4 gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-base md:text-lg">#{order.id.slice(0, 8)}</p>
+                      <p className="text-xs md:text-sm text-muted-foreground">
                         {format(new Date(order.created_at), 'PPp')}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0">
                       {getStatusBadge(order.status)}
-                      <p className="text-xl font-bold mt-2 text-gradient-gold">
+                      <p className="text-lg md:text-xl font-bold mt-1 text-gradient-gold">
                         ${order.total_amount.toFixed(2)}
                       </p>
                     </div>
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4">
                     <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Customer</p>
-                      <p className="font-medium">{order.guest_name || 'Guest'}</p>
+                      <p className="text-xs md:text-sm text-muted-foreground">Customer</p>
+                      <p className="font-medium text-sm md:text-base">{order.guest_name || 'Guest'}</p>
                       <a 
                         href={`https://t.me/${order.guest_telegram.replace('@', '')}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+                        className="text-xs md:text-sm text-primary hover:underline inline-flex items-center gap-1"
                       >
                         @{order.guest_telegram.replace('@', '')}
                         <ExternalLink className="w-3 h-3" />
                       </a>
-                      {order.guest_email && <p className="text-sm">{order.guest_email}</p>}
+                      {order.guest_email && <p className="text-xs md:text-sm">{order.guest_email}</p>}
                     </div>
                     <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Payment</p>
+                      <p className="text-xs md:text-sm text-muted-foreground">Payment</p>
                       {order.payment_md5 ? (
                         <>
-                          <p className="text-sm font-mono break-all">{order.payment_md5}</p>
+                          <p className="text-xs font-mono break-all">{order.payment_md5}</p>
                           {order.payment_verified_at && (
                             <p className="text-xs text-green-500 mt-1">
                               Verified: {format(new Date(order.payment_verified_at), 'PPp')}
@@ -898,15 +866,15 @@ const Admin: React.FC = () => {
                   </div>
 
                   <div className="space-y-2 mb-4">
-                    <p className="text-sm font-medium">Items:</p>
+                    <p className="text-xs md:text-sm font-medium">Items:</p>
                     {order.order_items?.map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-3 text-sm p-2 bg-muted/30 rounded">
+                      <div key={idx} className="flex items-center gap-2 md:gap-3 text-xs md:text-sm p-2 bg-muted/30 rounded">
                         <img 
                           src={getAppIcon(item.product_app)} 
                           alt={item.product_app}
-                          className="w-8 h-8 rounded-lg object-contain bg-muted/50"
+                          className="w-6 h-6 md:w-8 md:h-8 rounded-lg object-contain bg-muted/50"
                         />
-                        <span className="flex-1">{item.product_name}</span>
+                        <span className="flex-1 min-w-0 truncate">{item.product_name}</span>
                         <span>x{item.quantity}</span>
                         <span className="font-medium">${item.unit_price.toFixed(2)}</span>
                       </div>
@@ -928,7 +896,7 @@ const Admin: React.FC = () => {
                           ) : (
                             <RefreshCw className="w-4 h-4 mr-1" />
                           )}
-                          Check Bank
+                          Check
                         </Button>
                         <Button 
                           size="sm" 
@@ -936,7 +904,7 @@ const Admin: React.FC = () => {
                           onClick={() => handleUpdateOrderStatus(order.id, 'paid')}
                         >
                           <CheckCircle className="w-4 h-4 mr-1" />
-                          Confirm Paid
+                          Confirm
                         </Button>
                         <Button 
                           size="sm" 
@@ -956,7 +924,7 @@ const Admin: React.FC = () => {
                         onClick={() => handleUpdateOrderStatus(order.id, 'completed')}
                       >
                         <CheckCircle className="w-4 h-4 mr-1" />
-                        Mark Complete
+                        Complete
                       </Button>
                     )}
 
@@ -964,7 +932,7 @@ const Admin: React.FC = () => {
                       value={order.status || 'pending'}
                       onValueChange={(value) => handleUpdateOrderStatus(order.id, value)}
                     >
-                      <SelectTrigger className="w-32 ml-auto">
+                      <SelectTrigger className="w-28 md:w-32 ml-auto">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -981,8 +949,7 @@ const Admin: React.FC = () => {
                       className="text-destructive border-destructive/50 hover:bg-destructive/10"
                       onClick={() => handleDeleteOrder(order.id)}
                     >
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      Delete
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
@@ -994,28 +961,22 @@ const Admin: React.FC = () => {
         {/* Settings Tab */}
         {activeTab === 'settings' && (
           <div className="space-y-6 max-w-2xl">
-            <h2 className="text-2xl font-bold">Settings</h2>
+            <h2 className="text-xl md:text-2xl font-bold">Settings</h2>
 
-            {/* Shop Branding */}
-            <div className="glass-card p-6 space-y-6">
+            <div className="glass-card p-4 md:p-6 space-y-6">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Image className="w-5 h-5" />
                 Shop Branding
               </h3>
-              
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Shop Logo URL</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={settings.shopLogoUrl}
-                      onChange={(e) => setSettings(prev => ({ ...prev, shopLogoUrl: e.target.value }))}
-                      placeholder="https://example.com/logo.png"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Enter a URL to your shop logo. Recommended size: 200x200px
-                  </p>
+                  <Input
+                    value={settings.shopLogoUrl}
+                    onChange={(e) => setSettings(prev => ({ ...prev, shopLogoUrl: e.target.value }))}
+                    placeholder="https://example.com/logo.png"
+                  />
+                  <p className="text-xs text-muted-foreground">Enter a URL to your shop logo. Recommended size: 200x200px</p>
                   {settings.shopLogoUrl && (
                     <div className="p-4 bg-muted/50 rounded-lg">
                       <p className="text-sm mb-2">Preview:</p>
@@ -1023,9 +984,7 @@ const Admin: React.FC = () => {
                         src={settings.shopLogoUrl} 
                         alt="Shop Logo Preview"
                         className="w-20 h-20 object-contain rounded-lg bg-background"
-                        onError={(e) => {
-                          e.currentTarget.src = '/placeholder.svg';
-                        }}
+                        onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }}
                       />
                     </div>
                   )}
@@ -1033,10 +992,8 @@ const Admin: React.FC = () => {
               </div>
             </div>
 
-            {/* KHQR Payment Settings */}
-            <div className="glass-card p-6 space-y-6">
+            <div className="glass-card p-4 md:p-6 space-y-6">
               <h3 className="text-lg font-semibold">KHQR Payment Settings</h3>
-              
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Merchant Name</Label>
@@ -1045,7 +1002,6 @@ const Admin: React.FC = () => {
                     onChange={(e) => setSettings(prev => ({ ...prev, merchantName: e.target.value }))}
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label>Bakong Account</Label>
                   <Input
@@ -1054,7 +1010,6 @@ const Admin: React.FC = () => {
                     placeholder="username@bank"
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label>Machine ID / Terminal</Label>
                   <Input
@@ -1065,18 +1020,14 @@ const Admin: React.FC = () => {
               </div>
             </div>
 
-            {/* Telegram Bot Settings */}
-            <div className="glass-card p-6 space-y-6">
+            <div className="glass-card p-4 md:p-6 space-y-6">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Send className="w-5 h-5" />
                 Telegram Notifications
               </h3>
-              
               <div className="space-y-4">
                 <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
-                  <p className="text-sm">
-                    <strong>How to set up:</strong>
-                  </p>
+                  <p className="text-sm"><strong>How to set up:</strong></p>
                   <ol className="text-sm text-muted-foreground list-decimal ml-4 mt-2 space-y-1">
                     <li>Message @BotFather on Telegram and create a new bot</li>
                     <li>Copy the bot token and paste it below</li>
@@ -1084,7 +1035,6 @@ const Admin: React.FC = () => {
                     <li>Get your Chat ID by messaging @userinfobot</li>
                   </ol>
                 </div>
-
                 <div className="space-y-2">
                   <Label>Bot Token</Label>
                   <Input
@@ -1094,7 +1044,6 @@ const Admin: React.FC = () => {
                     placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label>Chat ID</Label>
                   <Input
@@ -1103,7 +1052,6 @@ const Admin: React.FC = () => {
                     placeholder="-1001234567890 or your user ID"
                   />
                 </div>
-
                 <Button variant="outline" onClick={handleTestTelegram} disabled={isSaving}>
                   <Send className="w-4 h-4 mr-2" />
                   Send Test Message
